@@ -5,9 +5,9 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "ESL Learning Hub — Curriculum AI",
+  title: "Verity AI — Curriculum AI for ESL Classrooms",
   description:
-    "A premium ESL learning hub for international schools. Curriculum-locked AI tutor with cited answers, translation, and interactive science.",
+    "Verity AI answers only from your school's approved material — never the open internet, cited every time — and speaks a student's own language, starting with Chinese (Mandarin, Simplified). Built for ESL students at international schools.",
 };
 
 export default function RootLayout({

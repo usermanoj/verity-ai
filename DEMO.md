@@ -1,4 +1,4 @@
-# 2-minute demo script — ESL Learning Hub (Curriculum AI)
+# 2-minute demo script — Verity AI (Curriculum AI for ESL Classrooms)
 
 **One-liner:** *"An AI tutor for ESL students that can only answer from the teacher's own approved materials — cited every time — and is built to guide, not to hand over answers."*
 
@@ -7,7 +7,7 @@ ESL students at international schools face a double barrier: hard science **and*
 
 ## The walkthrough (90s)
 
-1. **Landing → "Enter as a Student".** Premium, iPad-first. Note the four roles (Student / Teacher / HOD / Principal).
+1. **Landing → "Enter as a Student".** Premium, iPad-first. Point out the language roadmap strip (Chinese/Mandarin live, Korean/Malay/Tamil next) and the four roles (Student / Teacher / HOD / Principal).
 
 2. **Subjects → Physics → Moments of a Force.** The topic screen.
    - **Learn card:** difficult words are dotted — hover *"perpendicular"* → English meaning **+ 中文**. Click **🔊 Read aloud**. *(ESL support built in.)*
@@ -34,4 +34,4 @@ ESL students at international schools face a double barrier: hard science **and*
 - **Accuracy:** deterministic grading for numbers/MCQ; LLM only for explanation, hints, translation, rubric short-answer.
 - **Revenue:** B2B annual per-student site license ($15–40/student/yr), tiered Student/Teacher/School.
 - **Cost:** pilot ~$300–900/mo; cut with Haiku routing + prompt caching + deterministic grading.
-- **Languages:** Chinese first (glossary-tuned), architecture ready for more.
+- **Languages:** Chinese (Mandarin, Simplified) live and glossary-tuned; Korean, Malay, and Tamil are next on the roadmap — architecture is topic- and language-agnostic.

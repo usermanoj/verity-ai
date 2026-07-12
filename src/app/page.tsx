@@ -21,21 +21,32 @@ export default function Home() {
     <main className="mx-auto max-w-6xl px-6 py-10">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[var(--brand)] text-xl glow-brand">🎓</span>
-          <span className="text-lg font-semibold tracking-tight">ESL Learning Hub</span>
+          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[var(--brand)] text-xl glow-brand">🛡️</span>
+          <span className="text-lg font-semibold tracking-tight">
+            Verity <span className="text-[var(--brand2)]">AI</span>
+          </span>
         </div>
         <span className="glass rounded-full px-3 py-1 text-xs text-[var(--muted)]">IG · IB · Cambridge</span>
       </header>
 
       <section className="mt-14 text-center">
         <div className="mx-auto mb-4 w-fit rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-1.5 text-xs text-[var(--muted)]">
-          ✦ Curriculum AI for international schools
+          ✦ Cited. Curriculum-only. Built for ESL classrooms.
         </div>
         <h1 className="mx-auto max-w-3xl text-5xl font-bold leading-[1.1] tracking-tight sm:text-6xl">
-          Where every ESL student learns in <span className="text-gradient">their own language</span>, from <span className="text-gradient">their own teacher</span>.
+          One truth:{" "}
+          <span className="bg-gradient-to-r from-[#22d3ee] to-[#6366f1] bg-clip-text text-transparent">
+            your teacher&apos;s material
+          </span>
+          , in{" "}
+          <span className="bg-gradient-to-r from-[#6366f1] to-[#f472b6] bg-clip-text text-transparent">
+            every student&apos;s language
+          </span>
+          .
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-[var(--muted)]">
-          A premium learning hub whose AI answers <strong className="text-[var(--text)]">only</strong> from your school&apos;s approved materials — cited, translated, and designed to guide, not to hand over answers.
+          <strong className="text-[var(--text)]">Verity AI</strong> answers only from your school&apos;s approved material — never the open internet, cited every time — and speaks in a student&apos;s own language, starting with{" "}
+          <strong className="text-[var(--text)]">Chinese (Mandarin, Simplified)</strong>.
         </p>
         <div className="mt-8 flex items-center justify-center gap-3">
           <Link href="/subjects" className="rounded-2xl bg-[var(--brand)] px-6 py-3 font-medium text-white transition hover:-translate-y-0.5 glow-brand">
@@ -44,6 +55,17 @@ export default function Home() {
           <Link href="/topics/moments" className="glass rounded-2xl px-6 py-3 font-medium transition hover:-translate-y-0.5">
             Try the Physics demo
           </Link>
+        </div>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+          <span className="rounded-full border border-[rgba(52,211,153,0.4)] bg-[rgba(52,211,153,0.16)] px-3 py-1.5 text-xs font-medium text-[#6ee7b7]">
+            🇨🇳 Chinese (Mandarin) · Live now
+          </span>
+          <span className="glass rounded-full px-3 py-1.5 text-xs text-[var(--muted)]">🇰🇷 Korean · Coming soon</span>
+          <span className="glass rounded-full px-3 py-1.5 text-xs text-[var(--muted)]">🇲🇾 Malay · Coming soon</span>
+          <span className="glass rounded-full px-3 py-1.5 text-xs text-[var(--muted)]">🇮🇳 Tamil · Coming soon</span>
+          <span className="rounded-full border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.05)] px-3 py-1.5 text-xs text-[var(--muted)]">
+            + more languages
+          </span>
         </div>
       </section>
 
@@ -76,7 +98,7 @@ export default function Home() {
       </section>
 
       <footer className="mt-20 pb-8 text-center text-xs text-[var(--muted)]">
-        Built for the Claude Code Hackathon · Grade 7 Physics demo corpus · © ESL Learning Hub
+        Built for the Claude Code Hackathon · Grade 7 Physics demo corpus · © Verity AI
       </footer>
     </main>
   );

@@ -1,6 +1,6 @@
-# ESL Learning Hub — Curriculum AI
+# Verity AI — Curriculum AI for ESL Classrooms
 
-A premium, AI-native **ESL Learning Hub** for a top-rated international school (IG & IB curriculum). Its defining feature is a **closed-corpus AI tutor**: the AI answers **only from teacher-approved materials, with a citation every time**, and is designed to *guide* — explain, translate, hint, and ask questions — rather than hand over answers.
+A premium, AI-native learning hub for a top-rated international school (IG & IB curriculum). Its defining feature is a **closed-corpus AI tutor**: **Verity AI** answers **only from teacher-approved materials, with a citation every time**, and is designed to *guide* — explain, translate, hint, and ask questions — rather than hand over answers. Multilingual by design: Chinese (Mandarin, Simplified) live today, Korean/Malay/Tamil next.
 
 > Built for the Claude Code Hackathon. Demo topic: **Grade 7 Physics — Moments of a Force**, seeded from the school's own slides + worksheets.
 
@@ -34,4 +34,4 @@ npx vitest run
 - **Academic integrity is enforced in the system prompt** (`src/lib/tutor.ts`): the tutor never completes the task and always cites.
 
 ## Roadmap (post-hackathon)
-Teacher upload → auto-quiz pipeline · HOD/Principal analytics · whole-school vector + graph RAG · more languages · native iPad app · per-student licensing.
+Teacher upload → auto-quiz pipeline · whole-school vector + graph RAG · Korean, Malay, Tamil and more languages · native iPad app · per-student licensing.
