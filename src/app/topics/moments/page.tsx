@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import MomentsLever, { type LeverState } from "@/components/physics/MomentsLever";
 import AiTutorPanel from "@/components/tutor/AiTutorPanel";
 import ReadingText from "@/components/reading/ReadingText";
+import PracticeZone from "@/components/practice/PracticeZone";
 import { CORPUS, TOPIC } from "@/data/corpus";
 
 const learnChunks = CORPUS.filter((c) => ["m-def", "m-principle"].includes(c.id));
@@ -52,20 +53,16 @@ export default function MomentsTopic() {
 
           <MomentsLever onChange={setLever} />
 
-          <section className="glass rounded-3xl p-5">
-            <h2 className="mb-2 flex items-center gap-2 text-lg font-semibold"><span>🎯</span> Try it</h2>
-            <p className="text-sm text-[var(--muted)]">
-              Balance the seesaw above, then ask the tutor to <em>Check My Answer</em>. Right now the beam is{" "}
-              {lever ? (
-                <span className="font-semibold" style={{ color: lever.balanced ? "var(--good)" : "var(--warn)" }}>
-                  {lever.balanced ? "balanced ⚖️" : "not balanced"}
-                </span>
-              ) : (
-                "loading…"
-              )}
-              . Anticlockwise {lever?.anticlockwise ?? "—"} Nm vs clockwise {lever?.clockwise ?? "—"} Nm.
-            </p>
-          </section>
+          <div className="glass rounded-2xl px-4 py-2.5 text-sm text-[var(--muted)]">
+            Live from the seesaw: anticlockwise{" "}
+            <span className="font-semibold text-[var(--brand2)]">{lever?.anticlockwise ?? "—"} Nm</span> vs clockwise{" "}
+            <span className="font-semibold text-[var(--accent)]">{lever?.clockwise ?? "—"} Nm</span> —{" "}
+            <span className="font-semibold" style={{ color: lever?.balanced ? "var(--good)" : "var(--warn)" }}>
+              {lever ? (lever.balanced ? "balanced ⚖️" : "not balanced") : "loading…"}
+            </span>
+          </div>
+
+          <PracticeZone />
         </div>
 
         {/* RIGHT: sticky tutor */}

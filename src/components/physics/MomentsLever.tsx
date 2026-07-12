@@ -157,7 +157,7 @@ export default function MomentsLever({
         </div>
         <motion.div
           animate={{ scale: balanced ? [1, 1.06, 1] : 1 }}
-          transition={{ duration: 0.6, repeat: balanced ? Infinity : 0, repeatDelay: 0.4 }}
+          transition={{ duration: 0.6 }}
           className="rounded-2xl p-3"
           style={{
             background: balanced ? "rgba(52,211,153,0.16)" : "rgba(251,191,36,0.12)",
