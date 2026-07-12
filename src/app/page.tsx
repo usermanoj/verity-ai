@@ -2,9 +2,9 @@ import Link from "next/link";
 
 const ROLES = [
   { key: "student", label: "Student", icon: "🎒", desc: "Learn with a curriculum-locked AI tutor", href: "/subjects", primary: true },
-  { key: "teacher", label: "Teacher", icon: "👩‍🏫", desc: "Upload materials, monitor AI use, track progress", href: "/subjects" },
-  { key: "hod", label: "HOD", icon: "📊", desc: "Department analytics & curriculum coverage", href: "/subjects" },
-  { key: "principal", label: "Principal", icon: "🏫", desc: "School-wide dashboard & ESL improvement", href: "/subjects" },
+  { key: "teacher", label: "Teacher", icon: "👩‍🏫", desc: "Monitor AI use, track progress & misconceptions", href: "/teacher", primary: true },
+  { key: "hod", label: "HOD", icon: "📊", desc: "Department analytics & curriculum coverage", href: "/teacher" },
+  { key: "principal", label: "Principal", icon: "🏫", desc: "School-wide dashboard & ESL improvement", href: "/teacher" },
 ];
 
 const FEATURES = [
