@@ -1,8 +1,10 @@
 import Link from "next/link";
 import TeacherDashboard from "@/components/teacher/TeacherDashboard";
 import { CLASS } from "@/data/monitoring";
+import { requireRole } from "@/lib/auth";
 
-export default function TeacherPage() {
+export default async function TeacherPage() {
+  await requireRole("teacher", "/teacher");
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">

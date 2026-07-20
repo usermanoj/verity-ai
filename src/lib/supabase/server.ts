@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { SUPABASE_ANON_KEY, SUPABASE_URL, hasSupabase } from "./config";
+import type { Database } from "./types";
 
 // For Server Components and Route Handlers. Callers must check hasSupabase()
 // first (see client.ts for why this throws instead of no-op-ing).
@@ -13,7 +14,7 @@ export async function supabaseServer() {
     throw new Error("Supabase is not configured — check hasSupabase() before calling supabaseServer().");
   }
   const cookieStore = await cookies();
-  return createServerClient(SUPABASE_URL!, SUPABASE_ANON_KEY!, {
+  return createServerClient<Database>(SUPABASE_URL!, SUPABASE_ANON_KEY!, {
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {

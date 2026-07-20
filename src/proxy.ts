@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { hasSupabase } from "@/lib/supabase/config";
+import { updateSupabaseSession } from "@/lib/supabase/middleware";
 
 // Interim, best-effort protection for the AI-calling routes until real
 // per-user auth (Phase 1) and a persistent rate-limit store (Vercel KV /
@@ -7,6 +9,13 @@ import { NextRequest, NextResponse } from "next/server";
 // anyone on the internet can call — burning API credits with no rate limit
 // at all. This proxy meaningfully raises the bar; it is NOT a substitute for real
 // authentication. See ROADMAP.md Phase 0/1.
+//
+// Also refreshes the Supabase session (once per navigation, standard
+// middleware pattern) so pages/routes downstream see a valid token — a true
+// no-op today since hasSupabase() is false. This is why the matcher below
+// was broadened from just the two AI paths to every navigable route: the
+// rate-limit/origin checks below still only apply to PROTECTED_PATHS, but
+// session refresh needs to run app-wide once Supabase is configured.
 //
 // (Named `proxy.ts` per Next.js 16 — this file convention replaced the
 // `middleware.ts` name; functionality is unchanged, see
@@ -48,38 +57,40 @@ function pruneStaleBuckets() {
   }
 }
 
-export function proxy(req: NextRequest) {
-  if (!PROTECTED_PATHS.some((p) => req.nextUrl.pathname.startsWith(p))) {
-    return NextResponse.next();
-  }
-
-  const origin = req.headers.get("origin");
-  if (origin) {
-    try {
-      if (new URL(origin).host !== req.nextUrl.host) {
-        return NextResponse.json({ error: "Forbidden — cross-origin request rejected." }, { status: 403 });
+export async function proxy(req: NextRequest) {
+  if (PROTECTED_PATHS.some((p) => req.nextUrl.pathname.startsWith(p))) {
+    const origin = req.headers.get("origin");
+    if (origin) {
+      try {
+        if (new URL(origin).host !== req.nextUrl.host) {
+          return NextResponse.json({ error: "Forbidden — cross-origin request rejected." }, { status: 403 });
+        }
+      } catch {
+        return NextResponse.json({ error: "Forbidden — invalid origin." }, { status: 403 });
       }
-    } catch {
-      return NextResponse.json({ error: "Forbidden — invalid origin." }, { status: 403 });
     }
+
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip") ||
+      "unknown";
+
+    if (isRateLimited(ip)) {
+      return NextResponse.json(
+        { error: "Too many requests — please slow down and try again shortly." },
+        { status: 429 },
+      );
+    }
+    if (Math.random() < 0.01) pruneStaleBuckets();
   }
 
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "unknown";
-
-  if (isRateLimited(ip)) {
-    return NextResponse.json(
-      { error: "Too many requests — please slow down and try again shortly." },
-      { status: 429 },
-    );
+  if (hasSupabase()) {
+    return updateSupabaseSession(req);
   }
-  if (Math.random() < 0.01) pruneStaleBuckets();
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/api/tutor", "/api/translate"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

@@ -162,6 +162,8 @@ These are product requirements in the buyer's eyes, not internal checkboxes:
 
 **Observability — wired but dormant:** Sentry (`src/instrumentation.ts`, `src/instrumentation-client.ts`) and Langfuse (traces every `/api/tutor` and `/api/translate` call via `experimental_telemetry`) are both fully wired but gated on env vars (`SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN`, `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`) that aren't set yet — true no-ops today, live the moment real keys are added to Vercel, no further code changes needed.
 
+**Phase 1 — Auth wired but dormant:** Supabase Auth (Google/Microsoft SSO via `src/app/login`, `src/app/auth/callback`, `src/app/auth/signout`) and role gating on `/teacher`, `/hod`, `/principal` (`src/lib/auth.ts`'s `requireRole()`) are fully implemented but inert until `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` are set — the app stays fully open with mock-data dashboards until then. First-time sign-in provisions a `public.users` row defaulting to `role='student'` (least privilege); promoting someone to teacher/hod/principal is a manual step via the Supabase table editor until a real admin/invite UI exists. `/subjects` and the topic pages (student-facing) are deliberately left ungated in this pass — requiring student login raises its own questions (minors, parental consent, Google Workspace for Education provisioning) that deserve their own scoped task rather than being folded in silently here. **None of this has been tested against a live Supabase project or a real OAuth flow** — there is no live project yet (see the gap above).
+
 ---
 
 ## A closing caution

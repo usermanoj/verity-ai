@@ -1,7 +1,9 @@
 import Link from "next/link";
 import HodDashboard from "@/components/hod/HodDashboard";
+import { requireRole } from "@/lib/auth";
 
-export default function HodPage() {
+export default async function HodPage() {
+  await requireRole("hod", "/hod");
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import PrincipalDashboard from "@/components/principal/PrincipalDashboard";
+import { requireRole } from "@/lib/auth";
 
-export default function PrincipalPage() {
+export default async function PrincipalPage() {
+  await requireRole("principal", "/principal");
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
