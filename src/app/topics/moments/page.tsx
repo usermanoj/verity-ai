@@ -64,7 +64,7 @@ export default function MomentsTopic() {
             </span>
           </div>
 
-          <PracticeZone bank={MOMENTS_BANK} />
+          <PracticeZone key="moments" bank={MOMENTS_BANK} />
         </div>
 
         {/* RIGHT: sticky tutor */}

@@ -71,7 +71,7 @@ export default function DistanceTimeTopic() {
             at <span className="font-semibold text-[var(--accent)]">{journey?.speed ?? "—"} m/s</span>.
           </div>
 
-          <PracticeZone bank={DISTANCE_TIME_BANK} />
+          <PracticeZone key="distance-time" bank={DISTANCE_TIME_BANK} />
         </div>
 
         {/* RIGHT: sticky tutor */}

@@ -35,10 +35,11 @@ export default function DistanceTimeGraph({
   const dur2 = LEG_DISTANCE / speed2;
   const totalTime = dur1 + restTime + dur2;
 
-  const [t, setT] = useState(0);
-  useEffect(() => {
-    setT((prev) => Math.min(prev, totalTime));
-  }, [totalTime]);
+  // Clamp during render rather than storing an out-of-range value and
+  // correcting it in an effect afterwards — if a speed/rest slider shrinks
+  // totalTime, this takes effect on the same render, with no stale frame.
+  const [tRaw, setTRaw] = useState(0);
+  const t = Math.min(tRaw, totalTime);
 
   function distanceAt(time: number): number {
     if (time <= dur1) return speed1 * time;
@@ -139,7 +140,7 @@ export default function DistanceTimeGraph({
 
       <input
         type="range" min={0} max={totalTime} step={0.1} value={t}
-        onChange={(e) => setT(Number(e.target.value))}
+        onChange={(e) => setTRaw(Number(e.target.value))}
         className="mt-1 w-full accent-[var(--brand)]"
       />
 

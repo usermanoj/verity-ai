@@ -12,6 +12,57 @@ const CENTER_Y = 150;
 
 export type LeverState = { clockwise: number; anticlockwise: number; balanced: boolean };
 
+function WeightBlock({
+  w, side, tilt, onDragStart,
+}: {
+  w: Weight; side: -1 | 1; tilt: number; onDragStart: (id: string) => void;
+}) {
+  const x = CENTER_X + side * w.distance * PX_PER_M;
+  const size = 26 + Math.min(34, w.force / 12);
+  return (
+    <g
+      transform={`rotate(${tilt} ${CENTER_X} ${CENTER_Y})`}
+      onPointerDown={() => onDragStart(w.id)}
+      style={{ cursor: "grab" }}
+    >
+      <line x1={x} y1={CENTER_Y - 8} x2={x} y2={CENTER_Y - 8 - size * 0.5} stroke={w.color} strokeWidth={3} />
+      <motion.rect
+        layout
+        x={x - size / 2}
+        y={CENTER_Y - 8 - size * 0.5 - size}
+        width={size}
+        height={size}
+        rx={8}
+        fill={w.color}
+        opacity={0.92}
+        style={{ filter: "drop-shadow(0 6px 12px rgba(0,0,0,0.4))" }}
+      />
+      <text x={x} y={CENTER_Y - 8 - size * 0.5 - size - 8} textAnchor="middle" fontSize="13" fill="#eef2ff" fontWeight={600}>
+        {w.label}
+      </text>
+      <text x={x} y={CENTER_Y - 8 - size * 0.5 - size / 2 + 4} textAnchor="middle" fontSize="12" fill="#0b1020" fontWeight={700}>
+        {w.force}N
+      </text>
+    </g>
+  );
+}
+
+function ForceControl({ w, set, color }: { w: Weight; set: (f: number) => void; color: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-14 text-sm font-semibold" style={{ color }}>{w.label}</span>
+      <input
+        type="range" min={50} max={600} step={10} value={w.force}
+        onChange={(e) => set(Number(e.target.value))}
+        className="flex-1 accent-[var(--brand)]"
+      />
+      <span className="w-24 text-right text-sm text-[var(--muted)] tabular-nums">
+        {w.force}N × {w.distance}m
+      </span>
+    </div>
+  );
+}
+
 export default function MomentsLever({
   onChange,
 }: {
@@ -49,51 +100,7 @@ export default function MomentsLever({
   }, []);
 
   const stopDrag = () => (dragging.current = null);
-
-  const WeightBlock = ({ w, side }: { w: Weight; side: -1 | 1 }) => {
-    const x = CENTER_X + side * w.distance * PX_PER_M;
-    const size = 26 + Math.min(34, w.force / 12);
-    return (
-      <g
-        transform={`rotate(${tilt} ${CENTER_X} ${CENTER_Y})`}
-        onPointerDown={() => (dragging.current = w.id)}
-        style={{ cursor: "grab" }}
-      >
-        <line x1={x} y1={CENTER_Y - 8} x2={x} y2={CENTER_Y - 8 - size * 0.5} stroke={w.color} strokeWidth={3} />
-        <motion.rect
-          layout
-          x={x - size / 2}
-          y={CENTER_Y - 8 - size * 0.5 - size}
-          width={size}
-          height={size}
-          rx={8}
-          fill={w.color}
-          opacity={0.92}
-          style={{ filter: "drop-shadow(0 6px 12px rgba(0,0,0,0.4))" }}
-        />
-        <text x={x} y={CENTER_Y - 8 - size * 0.5 - size - 8} textAnchor="middle" fontSize="13" fill="#eef2ff" fontWeight={600}>
-          {w.label}
-        </text>
-        <text x={x} y={CENTER_Y - 8 - size * 0.5 - size / 2 + 4} textAnchor="middle" fontSize="12" fill="#0b1020" fontWeight={700}>
-          {w.force}N
-        </text>
-      </g>
-    );
-  };
-
-  const ForceControl = ({ w, set, color }: { w: Weight; set: (f: number) => void; color: string }) => (
-    <div className="flex items-center gap-3">
-      <span className="w-14 text-sm font-semibold" style={{ color }}>{w.label}</span>
-      <input
-        type="range" min={50} max={600} step={10} value={w.force}
-        onChange={(e) => set(Number(e.target.value))}
-        className="flex-1 accent-[var(--brand)]"
-      />
-      <span className="w-24 text-right text-sm text-[var(--muted)] tabular-nums">
-        {w.force}N × {w.distance}m
-      </span>
-    </div>
-  );
+  const onDragStart = (id: string) => (dragging.current = id);
 
   return (
     <div className="glass-strong rounded-3xl p-5">
@@ -138,8 +145,8 @@ export default function MomentsLever({
           fill="url(#beam)"
         />
 
-        <WeightBlock w={left} side={-1} />
-        <WeightBlock w={right} side={1} />
+        <WeightBlock w={left} side={-1} tilt={tilt} onDragStart={onDragStart} />
+        <WeightBlock w={right} side={1} tilt={tilt} onDragStart={onDragStart} />
 
         {/* pivot */}
         <polygon points={`${CENTER_X - 26},${CENTER_Y + 70} ${CENTER_X + 26},${CENTER_Y + 70} ${CENTER_X},${CENTER_Y + 4}`} fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.3)" />

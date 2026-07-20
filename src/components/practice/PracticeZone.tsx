@@ -1,26 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { grade } from "@/lib/grade";
 import type { PracticeItem } from "@/data/practice-banks";
 
+// Callers should pass a stable `key` derived from the topic (e.g.
+// key={topicId}) — React then remounts a fresh instance whenever the bank
+// changes, which naturally resets all state below instead of needing an
+// effect to do it manually.
 export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
   const [idx, setIdx] = useState(0);
   const [input, setInput] = useState("");
   const [result, setResult] = useState<ReturnType<typeof grade> | null>(null);
   const [streak, setStreak] = useState(0);
   const [wrong, setWrong] = useState(0);
-
-  // Reset to the first question whenever the bank itself changes (e.g. the
-  // student navigates to a different topic that renders this same component).
-  useEffect(() => {
-    setIdx(0);
-    setInput("");
-    setResult(null);
-    setStreak(0);
-    setWrong(0);
-  }, [bank]);
 
   const item = bank[idx];
 
