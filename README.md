@@ -106,6 +106,8 @@ npx vitest run    # deterministic grader — value, unit, direction, tolerance
 
 Teacher material upload with auto-question generation · real Supabase authentication & persistence · Korean, Malay, and Tamil language packs · additional subjects beyond Physics · whole-school vector + graph RAG · native iPad app.
 
+For the full architecture spec, phased plan, and multi-school production roadmap, see **[ROADMAP.md](./ROADMAP.md)**.
+
 ## Team
 
 **Manoj Bhardwaj — Founder & Builder** — 20+ years in enterprise banking technology at global financial institutions, building systems that must be correct, auditable, and trusted at scale. Currently founder of [Dhari AI](https://dhari.ai), building production-grade reasoning agents for regulated institutions with banking-grade rigor — the same discipline applied here to ESL education.
