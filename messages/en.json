@@ -1,0 +1,36 @@
+{
+  "HomePage": {
+    "badge": "✦ Cited. Curriculum-only. Built for ESL classrooms.",
+    "headline": "One truth: <material>your teacher's material</material>, in <language>every student's language</language>.",
+    "subtitle": "<brand>Verity AI</brand> answers only from your school's approved material — never the open internet, cited every time — and speaks in a student's own language, starting with <highlight>Chinese (Mandarin, Simplified)</highlight>.",
+    "ctaStudent": "Enter as a Student →",
+    "ctaDemo": "Try the Physics demo",
+    "languages": {
+      "zh": "🇨🇳 Chinese (Mandarin) · Live now",
+      "ko": "🇰🇷 Korean · Coming soon",
+      "ms": "🇲🇾 Malay · Coming soon",
+      "ta": "🇮🇳 Tamil · Coming soon",
+      "more": "+ more languages"
+    },
+    "rolesHeading": "Choose your role",
+    "roles": {
+      "student": { "label": "Student", "desc": "Learn with a curriculum-locked AI guide" },
+      "teacher": { "label": "Teacher", "desc": "Monitor AI use, track progress & misconceptions" },
+      "hod": { "label": "HOD", "desc": "Department analytics & curriculum coverage" },
+      "principal": { "label": "Principal", "desc": "School-wide dashboard & ESL improvement" }
+    },
+    "liveDemo": "Live demo →",
+    "features": {
+      "closedCorpus": { "title": "Closed-corpus AI", "body": "Answers only from teacher-approved materials — with an exact citation every time." },
+      "translation": { "title": "Top-end translation", "body": "Simplified English + Chinese (中文), tuned with a physics glossary for accuracy." },
+      "interactive": { "title": "Interactive science", "body": "Drag-and-feel simulations turn abstract physics into something you can play with." },
+      "guides": { "title": "Guides, never cheats", "body": "The AI hints and asks questions — it won't do the assignment for you." },
+      "adaptive": { "title": "Adaptive & transparent", "body": "Adapts difficulty to each learner; every AI chat is visible to teachers." },
+      "grading": { "title": "Trusted grading", "body": "Numbers graded deterministically — never by a guessing chatbot." }
+    },
+    "footer": "Built for the Claude Code Hackathon · Grade 7 Physics demo corpus · © Verity AI"
+  },
+  "LocaleSwitcher": {
+    "label": "Language"
+  }
+}

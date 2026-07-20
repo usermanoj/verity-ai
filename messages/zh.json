@@ -1,0 +1,36 @@
+{
+  "HomePage": {
+    "badge": "✦ 引用可溯源。仅限校本课程内容。专为ESL课堂打造。",
+    "headline": "唯一真相：<material>老师的教材</material>，用<language>每位学生的母语</language>讲给你听。",
+    "subtitle": "<brand>Verity AI</brand> 仅根据学校审核过的教材作答——绝不使用互联网内容，每次回答都注明出处——并用学生自己的母语交流，目前已支持<highlight>简体中文</highlight>。",
+    "ctaStudent": "以学生身份进入 →",
+    "ctaDemo": "体验物理演示",
+    "languages": {
+      "zh": "🇨🇳 中文（普通话）· 已上线",
+      "ko": "🇰🇷 韩语 · 即将上线",
+      "ms": "🇲🇾 马来语 · 即将上线",
+      "ta": "🇮🇳 泰米尔语 · 即将上线",
+      "more": "+ 更多语言"
+    },
+    "rolesHeading": "选择你的角色",
+    "roles": {
+      "student": { "label": "学生", "desc": "跟随课程锁定的AI学习助手学习" },
+      "teacher": { "label": "教师", "desc": "监控AI使用情况，追踪学习进度与常见误区" },
+      "hod": { "label": "学科主任", "desc": "学科数据分析与课程覆盖情况" },
+      "principal": { "label": "校长", "desc": "全校仪表盘与ESL学习提升情况" }
+    },
+    "liveDemo": "在线演示 →",
+    "features": {
+      "closedCorpus": { "title": "闭环课程内容AI", "body": "只根据教师审核过的教材作答——每次都附带准确出处。" },
+      "translation": { "title": "顶级翻译能力", "body": "简体中文 + 简化英语，并配合物理学术语词汇表确保准确性。" },
+      "interactive": { "title": "互动式科学体验", "body": "可拖拽的模拟实验，让抽象的物理概念变得可以动手体验。" },
+      "guides": { "title": "引导式学习，从不代劳", "body": "AI只给提示和提问——不会替你完成作业。" },
+      "adaptive": { "title": "自适应且透明", "body": "根据每位学生调整难度；所有AI对话教师均可查看。" },
+      "grading": { "title": "可信的评分机制", "body": "数字类答案由确定性规则评分——绝不由AI随意猜测。" }
+    },
+    "footer": "为 Claude Code 黑客松打造 · 七年级物理演示课程内容 · © Verity AI"
+  },
+  "LocaleSwitcher": {
+    "label": "语言"
+  }
+}
