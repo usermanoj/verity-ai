@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { MODEL, hasApiKey, cachedSystem } from "@/lib/ai";
+import { hasLangfuse } from "@/lib/observability";
 import { buildSystemPrompt, fallbackReply, type Intent, type EslLevel } from "@/lib/tutor";
 import { contentRepo } from "@/lib/content-repo";
 
@@ -103,6 +104,7 @@ export async function POST(req: NextRequest) {
           maxOutputTokens: 800,
           system: cachedSystem(system),
           messages: [...priorTurns, { role: "user", content: userText }],
+          experimental_telemetry: { isEnabled: hasLangfuse(), functionId: "tutor" },
         });
         for await (const textDelta of result.textStream) {
           controller.enqueue(jsonLine({ type: "delta", text: textDelta }));

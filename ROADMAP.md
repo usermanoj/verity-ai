@@ -160,6 +160,8 @@ These are product requirements in the buyer's eyes, not internal checkboxes:
 
 **Model-agnostic by design:** the AI layer (`src/lib/ai.ts`) routes through the Vercel AI Gateway using plain `"provider/model"` strings via the `ai` SDK — switching from Claude to GPT, Gemini, DeepSeek, Qwen, Kimi, etc. is an `AI_MODEL` env var change, not a code change (see `.env.local.example`).
 
+**Observability — wired but dormant:** Sentry (`src/instrumentation.ts`, `src/instrumentation-client.ts`) and Langfuse (traces every `/api/tutor` and `/api/translate` call via `experimental_telemetry`) are both fully wired but gated on env vars (`SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN`, `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`) that aren't set yet — true no-ops today, live the moment real keys are added to Vercel, no further code changes needed.
+
 ---
 
 ## A closing caution

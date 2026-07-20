@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateText } from "ai";
 import { TRANSLATE_MODEL, hasApiKey } from "@/lib/ai";
+import { hasLangfuse } from "@/lib/observability";
 import { contentRepo } from "@/lib/content-repo";
 
 export const runtime = "nodejs";
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
         `Translate faithfully and naturally, keeping the scientific meaning exact. Use this approved terminology glossary for consistency:\n${glossaryLines}\n` +
         `Return ONLY the translation, no preamble.`,
       prompt: text,
+      experimental_telemetry: { isEnabled: hasLangfuse(), functionId: "translate" },
     });
 
     return NextResponse.json({ translation: result.text, demo: false });
