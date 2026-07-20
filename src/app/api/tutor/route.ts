@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { claude, hasApiKey, MODEL } from "@/lib/claude";
 import { buildSystemPrompt, fallbackReply, type Intent, type EslLevel } from "@/lib/tutor";
-import { CORPUS } from "@/data/corpus";
+import { contentRepo } from "@/lib/content-repo";
 
 export const runtime = "nodejs";
 
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   const topic = topicId ?? "moments";
 
   if (!hasApiKey()) {
-    const fb = fallbackReply(topic, intent, question, turnNum, contextChunkId);
+    const fb = await fallbackReply(topic, intent, question, turnNum, contextChunkId);
     const stream = new ReadableStream({
       start(controller) {
         controller.enqueue(jsonLine({ type: "delta", text: fb.text }));
@@ -75,11 +75,11 @@ export async function POST(req: NextRequest) {
     return new Response(stream, { headers: { "Content-Type": "application/x-ndjson" } });
   }
 
-  const system = buildSystemPrompt(topic, level ?? "intermediate", intent ?? "explain", turnNum);
+  const system = await buildSystemPrompt(topic, level ?? "intermediate", intent ?? "explain", turnNum);
 
   let userText: string;
   if (intent === "check") {
-    const contextChunk = contextChunkId ? CORPUS.find((c) => c.id === contextChunkId) : undefined;
+    const contextChunk = contextChunkId ? await contentRepo.getCorpusChunk(contextChunkId) : undefined;
     userText = contextChunk
       ? `The student is working on a problem related to: "${contextChunk.text}" (source: ${contextChunk.source}). ` +
         `Their attempted answer/working: "${answer}". Give a hint about what to check — do not give the final answer.`

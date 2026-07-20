@@ -1,12 +1,13 @@
-import { CORPUS, TOPICS, type CorpusChunk } from "@/data/corpus";
+import { contentRepo } from "@/lib/content-repo";
+import type { CorpusChunk } from "@/data/corpus";
 
 export type Intent = "explain" | "translate" | "example" | "askme" | "check";
 export type EslLevel = "advanced" | "intermediate" | "beginner" | "beginner_zh";
 
 // Vectorless / long-context RAG: for a small curated per-topic corpus we inject
 // the whole approved set and force the model to cite. No embeddings, no drift.
-export function corpusForTopic(topicId: string): CorpusChunk[] {
-  return CORPUS.filter((c) => c.topicId === topicId);
+export async function corpusForTopic(topicId: string): Promise<CorpusChunk[]> {
+  return contentRepo.getCorpusForTopic(topicId);
 }
 
 function corpusBlock(chunks: CorpusChunk[]): string {
@@ -52,9 +53,9 @@ function intentGuide(intent: Intent, turn: number): string {
   return INTENT_GUIDE[intent];
 }
 
-export function buildSystemPrompt(topicId: string, level: EslLevel, intent: Intent, turn = 0): string {
-  const chunks = corpusForTopic(topicId);
-  const meta = TOPICS[topicId] ?? TOPICS["moments"];
+export async function buildSystemPrompt(topicId: string, level: EslLevel, intent: Intent, turn = 0): Promise<string> {
+  const chunks = await corpusForTopic(topicId);
+  const meta = (await contentRepo.getTopic(topicId)) ?? (await contentRepo.getTopic("moments"))!;
   const progressNote =
     turn > 0
       ? `\n6. The student is continuing the same "${intent}" thread (turn ${turn + 1}) — look at the conversation history and do NOT repeat a previous reply. Go deeper, use a different worked example, or ask a different guiding question than before.`
@@ -117,8 +118,8 @@ const ASKME_QUESTIONS_BY_TOPIC: Record<string, { chunkId: string; q: string }[]>
   ],
 };
 
-function byId(id: string): CorpusChunk {
-  const c = CORPUS.find((x) => x.id === id);
+async function byId(id: string): Promise<CorpusChunk> {
+  const c = await contentRepo.getCorpusChunk(id);
   if (!c) throw new Error(`Unknown corpus chunk: ${id}`);
   return c;
 }
@@ -150,13 +151,13 @@ export const CHECK_HINTS: Record<string, string> = {
 export const CHECKABLE_CHUNK_IDS = Object.keys(CHECK_HINTS);
 
 // Deterministic fallback so the UI is fully demoable before an API key is set.
-export function fallbackReply(
+export async function fallbackReply(
   topicId: string,
   intent: Intent,
   question: string,
   turn = 0,
   contextChunkId?: string,
-): FallbackResult {
+): Promise<FallbackResult> {
   const explainIds = EXPLAIN_IDS_BY_TOPIC[topicId] ?? EXPLAIN_IDS_BY_TOPIC["moments"];
   const exampleIds = EXAMPLE_IDS_BY_TOPIC[topicId] ?? EXAMPLE_IDS_BY_TOPIC["moments"];
   const askmeQuestions = ASKME_QUESTIONS_BY_TOPIC[topicId] ?? ASKME_QUESTIONS_BY_TOPIC["moments"];
@@ -164,13 +165,13 @@ export function fallbackReply(
   switch (intent) {
     case "explain": {
       const id = explainIds[turn % explainIds.length];
-      const c = byId(id);
+      const c = await byId(id);
       const lead = turn === 0 ? "" : "Let's go a bit deeper — ";
       return { text: `${lead}${c.text}\n\n${citeOf(c)}`, sourceId: id };
     }
     case "example": {
       const id = exampleIds[turn % exampleIds.length];
-      const c = byId(id);
+      const c = await byId(id);
       return {
         text: `Worked example: ${c.text}\n\nNow try a similar one yourself!\n\n${citeOf(c)}`,
         sourceId: id,
@@ -179,7 +180,7 @@ export function fallbackReply(
     case "askme": {
       const idx = turn % askmeQuestions.length;
       const item = askmeQuestions[idx];
-      const c = byId(item.chunkId);
+      const c = await byId(item.chunkId);
       if (turn === 0) {
         return { text: `Let's think it through:\n${item.q}\n\n${citeOf(c)}`, sourceId: item.chunkId };
       }
@@ -188,7 +189,7 @@ export function fallbackReply(
       // student can compare it against their own answer, then ask the next
       // single question.
       const prevItem = askmeQuestions[(turn - 1) % askmeQuestions.length];
-      const prevChunk = byId(prevItem.chunkId);
+      const prevChunk = await byId(prevItem.chunkId);
       return {
         text:
           `Thanks for answering. Here's the approved material to compare your answer with: ${prevChunk.text}\n\n` +
@@ -198,7 +199,7 @@ export function fallbackReply(
     }
     case "check": {
       if (contextChunkId && CHECK_HINTS[contextChunkId]) {
-        const c = byId(contextChunkId);
+        const c = await byId(contextChunkId);
         return {
           text: `Let's check your working — ${CHECK_HINTS[contextChunkId]} Fix that, then show me again.\n\n${citeOf(c)}`,
           sourceId: contextChunkId,
@@ -216,7 +217,7 @@ export function fallbackReply(
       // The Translate button now calls /api/translate directly (see AiTutorPanel),
       // which has reviewed per-chunk translations. This case is a rarely-hit
       // fallback if /api/tutor is ever called with intent=translate directly.
-      const c = byId(explainIds[0]);
+      const c = await byId(explainIds[0]);
       return { text: `${c.text}\n\n${citeOf(c)}`, sourceId: c.id };
     }
     default:

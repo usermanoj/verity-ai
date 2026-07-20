@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { claude, hasApiKey, MODEL } from "@/lib/claude";
-import { GLOSSARY, CORPUS } from "@/data/corpus";
-import { ZH_TRANSLATIONS } from "@/data/translations-zh";
+import { contentRepo } from "@/lib/content-repo";
 
 export const runtime = "nodejs";
-
-const glossaryLines = Object.entries(GLOSSARY)
-  .map(([en, v]) => `- "${en}" → ${v.zh}`)
-  .join("\n");
 
 const MAX_TEXT_LEN = 2000;
 
@@ -31,8 +26,8 @@ export async function POST(req: NextRequest) {
       // Demo/offline mode: use a reviewed translation of the ACTUAL chunk that
       // was just explained (sourceId), rather than one generic canned string —
       // so Translate reflects what the student is really looking at.
-      const reviewed = sourceId ? ZH_TRANSLATIONS[sourceId] : undefined;
-      const chunk = sourceId ? CORPUS.find((c) => c.id === sourceId) : undefined;
+      const reviewed = sourceId ? await contentRepo.getTranslation(sourceId) : undefined;
+      const chunk = sourceId ? await contentRepo.getCorpusChunk(sourceId) : undefined;
       if (reviewed) {
         return NextResponse.json({
           translation: `${reviewed}\n\n📖 Based on: ${chunk?.source ?? "approved material"} (demo mode — reviewed translation)`,
@@ -45,6 +40,11 @@ export async function POST(req: NextRequest) {
         demo: true,
       });
     }
+
+    const glossary = await contentRepo.getGlossary();
+    const glossaryLines = Object.entries(glossary)
+      .map(([en, v]) => `- "${en}" → ${v.zh}`)
+      .join("\n");
 
     const msg = await claude().messages.create({
       model: process.env.ANTHROPIC_TRANSLATE_MODEL || MODEL,
