@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { MODEL, hasApiKey, cachedSystem } from "@/lib/ai";
 import { hasLangfuse } from "@/lib/observability";
+import { logEvent } from "@/lib/events";
 import { buildSystemPrompt, fallbackReply, type Intent, type EslLevel } from "@/lib/tutor";
 import { contentRepo } from "@/lib/content-repo";
 
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
   const topic = topicId ?? "moments";
 
   if (!hasApiKey()) {
+    void logEvent("tutor_message", { intent, topicId: topic, demo: true });
     const fb = await fallbackReply(topic, intent, question, turnNum, contextChunkId);
     const stream = new ReadableStream({
       start(controller) {
@@ -95,6 +97,8 @@ export async function POST(req: NextRequest) {
   // Thread real conversation history so the model actually remembers what it
   // already said — without this, "then?" / "what next?" has nothing to build on.
   const priorTurns = (history ?? []).map((h) => ({ role: h.role, content: h.content }));
+
+  void logEvent("tutor_message", { intent, topicId: topic, demo: false });
 
   const stream = new ReadableStream({
     async start(controller) {

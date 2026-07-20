@@ -27,6 +27,15 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
     } else {
       setWrong((w) => w + 1);
     }
+    // Fire-and-forget: records the attempt when a real student is signed in
+    // and Supabase is configured (both false today — see ROADMAP.md §7), and
+    // is a true no-op otherwise. Never awaited — a logging failure must
+    // never affect the grading UX, which is already complete by this point.
+    fetch("/api/practice/attempt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questionId: item.id, answer: input, gradedResult: r }),
+    }).catch(() => {});
   }
 
   function next(targetLevel?: PracticeItem["level"]) {
