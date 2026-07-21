@@ -90,6 +90,27 @@ export type Database = {
         };
         Relationships: [];
       };
+      staff_allowlist: {
+        Row: {
+          email: string;
+          school_id: string;
+          role: "teacher" | "hod" | "principal";
+          created_at: string;
+        };
+        Insert: {
+          email: string;
+          school_id: string;
+          role: "teacher" | "hod" | "principal";
+          created_at?: string;
+        };
+        Update: {
+          email?: string;
+          school_id?: string;
+          role?: "teacher" | "hod" | "principal";
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       courses: {
         Row: {
           id: string;
