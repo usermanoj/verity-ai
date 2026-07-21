@@ -1,11 +1,27 @@
 import { supabaseServer } from "@/lib/supabase/server";
 
+export type GeneratedQuestionRow = {
+  id: string;
+  level: "Easy" | "Medium" | "Challenge";
+  prompt: string;
+  question: Record<string, unknown>;
+  status: "pending" | "approved" | "rejected";
+};
+
+export type TeacherChunk = {
+  id: string;
+  heading: string | null;
+  text: string;
+  citation: string;
+  questions: GeneratedQuestionRow[];
+};
+
 export type TeacherDocument = {
   id: string;
   source_file: string;
   status: "pending" | "approved" | "rejected";
   created_at: string;
-  chunks: { id: string; heading: string | null; text: string; citation: string }[];
+  chunks: TeacherChunk[];
 };
 
 // Shared by the initial server-rendered page load and the client-side
@@ -24,7 +40,18 @@ export async function listTeacherDocuments(teacherId: string): Promise<TeacherDo
       .from("corpus_chunks")
       .select("id, heading, text, citation")
       .eq("document_id", doc.id);
-    documents.push({ ...doc, chunks: chunks ?? [] });
+
+    const chunksWithQuestions: TeacherChunk[] = [];
+    for (const chunk of chunks ?? []) {
+      const { data: questions } = await supabase
+        .from("generated_questions")
+        .select("id, level, prompt, question, status")
+        .eq("chunk_id", chunk.id)
+        .neq("status", "rejected");
+      chunksWithQuestions.push({ ...chunk, questions: questions ?? [] });
+    }
+
+    documents.push({ ...doc, chunks: chunksWithQuestions });
   }
   return documents;
 }

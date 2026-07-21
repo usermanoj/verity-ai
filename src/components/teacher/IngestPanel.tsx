@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import type { TeacherDocument } from "@/lib/ingestion/documents";
+import ChunkQuestions from "./ChunkQuestions";
 
-type Chunk = { id: string; heading: string | null; text: string; citation: string };
-type Doc = { id: string; source_file: string; status: "pending" | "approved" | "rejected"; created_at: string; chunks: Chunk[] };
+type Doc = TeacherDocument;
 
 // Initial data comes from the server-rendered page (see
 // app/teacher/ingest/page.tsx) rather than a mount-time client fetch —
@@ -122,6 +123,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
                   {c.heading && <div className="mb-1 font-semibold text-[var(--brand2)]">{c.heading}</div>}
                   <p className="text-[var(--text)]/85">{c.text}</p>
                   <div className="mt-1 text-xs text-[var(--muted)]">📖 {c.citation}</div>
+                  {doc.status === "approved" && <ChunkQuestions chunk={c} onChanged={refresh} />}
                 </div>
               ))}
             </div>

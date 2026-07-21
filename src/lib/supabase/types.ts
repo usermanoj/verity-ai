@@ -177,6 +177,45 @@ export type Database = {
         };
         Relationships: [];
       };
+      generated_questions: {
+        Row: {
+          id: string;
+          chunk_id: string;
+          level: "Easy" | "Medium" | "Challenge";
+          prompt: string;
+          question: Record<string, unknown>;
+          status: "pending" | "approved" | "rejected";
+          generated_by: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          chunk_id: string;
+          level: "Easy" | "Medium" | "Challenge";
+          prompt: string;
+          question: Record<string, unknown>;
+          status?: "pending" | "approved" | "rejected";
+          generated_by?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          chunk_id?: string;
+          level?: "Easy" | "Medium" | "Challenge";
+          prompt?: string;
+          question?: Record<string, unknown>;
+          status?: "pending" | "approved" | "rejected";
+          generated_by?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
