@@ -17,7 +17,8 @@ export default async function TeacherIngestPage() {
 
       <h1 className="text-3xl font-bold tracking-tight">Add curriculum material</h1>
       <p className="mt-1 text-[var(--muted)]">
-        Upload a .docx or .pdf — it gets split into cited chunks for you to review before students ever see it.
+        Upload one or more .docx, .pdf, .pptx or .txt files — each gets split into cited chunks for you to review
+        before students ever see it.
       </p>
 
       {!hasSupabase() ? (

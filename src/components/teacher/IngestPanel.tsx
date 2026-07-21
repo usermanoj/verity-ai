@@ -60,11 +60,12 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         className="glass flex flex-wrap items-end gap-3 rounded-3xl p-5"
       >
         <div className="flex-1">
-          <label className="mb-1 block text-xs text-[var(--muted)]">File (.docx or .pdf)</label>
+          <label className="mb-1 block text-xs text-[var(--muted)]">Files (.docx, .pdf, .pptx, .txt)</label>
           <input
             type="file"
             name="file"
-            accept=".docx,.pdf"
+            accept=".docx,.pdf,.pptx,.txt"
+            multiple
             required
             className="w-full rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)]"
           />
@@ -115,7 +116,8 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         </button>
       </form>
       <p className="text-xs text-[var(--muted)]">
-        Enter one section, or several of your own sections (comma-separated) to apply this material to all of them.
+        Pick one or more files at once. Enter one section, or several of your own sections (comma-separated) to apply
+        this material to all of them.
       </p>
       {error && <p className="text-sm text-[var(--warn)]">{error}</p>}
 

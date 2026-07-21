@@ -19,7 +19,7 @@ async function extractStep(sourceFile: string, storagePath: string) {
   "use step";
   const ext = sourceFile.split(".").pop()?.toLowerCase() ?? "";
   if (!isSupportedExtension(ext)) {
-    throw new FatalError(`Unsupported file type: .${ext} (only .docx and .pdf are supported today)`);
+    throw new FatalError(`Unsupported file type: .${ext} (only .docx, .pdf, .pptx and .txt are supported today)`);
   }
   const buffer = await downloadCorpusFile(storagePath);
   return extractDocument(buffer, ext);
