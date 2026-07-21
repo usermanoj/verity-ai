@@ -92,5 +92,9 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // .well-known/workflow/ MUST stay excluded — Workflow SDK's internal
+  // resumption requests break if the proxy intercepts them (see
+  // node_modules/workflow/docs/getting-started/next.mdx's troubleshooting
+  // section for the exact failure mode).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.well-known/workflow/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

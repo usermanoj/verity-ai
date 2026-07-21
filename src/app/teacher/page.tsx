@@ -9,7 +9,8 @@ export default async function TeacherPage() {
     <main className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <Link href="/" className="text-sm text-[var(--muted)] hover:text-[var(--text)]">← Home</Link>
-        <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
+        <div className="flex items-center gap-3 text-sm text-[var(--muted)]">
+          <Link href="/teacher/ingest" className="glass rounded-full px-3 py-1 hover:text-[var(--text)]">📤 Upload material</Link>
           <span className="rounded-full bg-[rgba(99,102,241,0.18)] px-3 py-1 text-[var(--brand2)]">👩‍🏫 Teacher</span>
         </div>
       </div>

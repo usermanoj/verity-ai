@@ -90,6 +90,93 @@ export type Database = {
         };
         Relationships: [];
       };
+      classes: {
+        Row: {
+          id: string;
+          school_id: string;
+          subject: string;
+          grade: string;
+          teacher_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          subject: string;
+          grade: string;
+          teacher_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          school_id?: string;
+          subject?: string;
+          grade?: string;
+          teacher_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      corpus_documents: {
+        Row: {
+          id: string;
+          class_id: string;
+          uploaded_by: string | null;
+          source_file: string;
+          status: "pending" | "approved" | "rejected";
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          class_id: string;
+          uploaded_by?: string | null;
+          source_file: string;
+          status?: "pending" | "approved" | "rejected";
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          class_id?: string;
+          uploaded_by?: string | null;
+          source_file?: string;
+          status?: "pending" | "approved" | "rejected";
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      corpus_chunks: {
+        Row: {
+          id: string;
+          document_id: string;
+          heading: string | null;
+          text: string;
+          citation: string;
+          approved_by: string | null;
+          approved_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          document_id: string;
+          heading?: string | null;
+          text: string;
+          citation: string;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          document_id?: string;
+          heading?: string | null;
+          text?: string;
+          citation?: string;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
