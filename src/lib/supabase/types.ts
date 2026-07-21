@@ -90,13 +90,13 @@ export type Database = {
         };
         Relationships: [];
       };
-      classes: {
+      courses: {
         Row: {
           id: string;
           school_id: string;
           subject: string;
           grade: string;
-          teacher_id: string | null;
+          academic_year: string;
           created_at: string;
         };
         Insert: {
@@ -104,7 +104,7 @@ export type Database = {
           school_id: string;
           subject: string;
           grade: string;
-          teacher_id?: string | null;
+          academic_year: string;
           created_at?: string;
         };
         Update: {
@@ -112,6 +112,33 @@ export type Database = {
           school_id?: string;
           subject?: string;
           grade?: string;
+          academic_year?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      classes: {
+        Row: {
+          id: string;
+          school_id: string;
+          course_id: string;
+          section_name: string;
+          teacher_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          course_id: string;
+          section_name: string;
+          teacher_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          school_id?: string;
+          course_id?: string;
+          section_name?: string;
           teacher_id?: string | null;
           created_at?: string;
         };
@@ -120,7 +147,6 @@ export type Database = {
       corpus_documents: {
         Row: {
           id: string;
-          class_id: string;
           uploaded_by: string | null;
           source_file: string;
           status: "pending" | "approved" | "rejected";
@@ -128,7 +154,6 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          class_id: string;
           uploaded_by?: string | null;
           source_file: string;
           status?: "pending" | "approved" | "rejected";
@@ -136,11 +161,25 @@ export type Database = {
         };
         Update: {
           id?: string;
-          class_id?: string;
           uploaded_by?: string | null;
           source_file?: string;
           status?: "pending" | "approved" | "rejected";
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      corpus_document_sections: {
+        Row: {
+          document_id: string;
+          class_id: string;
+        };
+        Insert: {
+          document_id: string;
+          class_id: string;
+        };
+        Update: {
+          document_id?: string;
+          class_id?: string;
         };
         Relationships: [];
       };
