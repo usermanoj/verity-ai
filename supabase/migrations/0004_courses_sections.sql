@@ -7,6 +7,11 @@
 -- teacher has signed in or uploaded, which is exactly why now is the cheap
 -- moment to restructure — there is no data to migrate.
 --
+-- Fully idempotent / re-runnable (every statement guarded), because the
+-- Supabase SQL editor autocommits statement-by-statement: a failure partway
+-- leaves earlier statements applied, so re-running the whole file must be
+-- safe.
+--
 -- Why: the original `classes` table conflated "a course" (Grade 7 Physics)
 -- with "a section" (7A). A real school has multiple sections of the same
 -- course (7A–7F), multiple teachers across them (3 Physics teachers over 6
@@ -29,8 +34,8 @@ create table if not exists public.courses (
 
 -- 2. classes becomes a *section* of a course --------------------------------
 -- subject/grade move up to courses (single source of truth); a section is
--- identified by (course_id, section_name) and owned by one teacher. Added
--- NOT NULL is safe only because the table is empty (see header).
+-- identified by (course_id, section_name) and owned by one teacher. NOT NULL
+-- is safe only because the table is empty (see header).
 alter table public.classes
   add column if not exists course_id uuid references public.courses (id) on delete cascade,
   add column if not exists section_name text;
@@ -38,20 +43,24 @@ alter table public.classes
 alter table public.classes drop column if exists subject;
 alter table public.classes drop column if exists grade;
 
--- Backfill guard: the table is empty, so these constraints apply cleanly.
 alter table public.classes alter column course_id set not null;
 alter table public.classes alter column section_name set not null;
 
--- One section name per course; this unique index is what makes "get-or-create
--- the section" and the one-teacher-per-section rule enforceable.
 create unique index if not exists classes_course_section_uniq
   on public.classes (course_id, section_name);
 
--- 3. corpus documents apply to many sections via a join ---------------------
+-- 3. Drop the policies that reach the school through
+--    corpus_documents.class_id BEFORE dropping that column — Postgres
+--    refuses to drop a column any policy still depends on. They are
+--    recreated in step 6 against the new join table.
+drop policy if exists corpus_documents_select on public.corpus_documents;
+drop policy if exists corpus_chunks_select on public.corpus_chunks;
+drop policy if exists generated_questions_select on public.generated_questions;
+
+-- 4. corpus documents apply to many sections via a join ---------------------
 -- A document is no longer tied to a single class. It is owned by its
 -- uploader (uploaded_by) and applies to a set of that teacher's sections,
--- recorded here. Retrieval and visibility go through this table, not a
--- single class_id column.
+-- recorded here. Retrieval and visibility go through this table.
 alter table public.corpus_documents drop column if exists class_id;
 
 create table if not exists public.corpus_document_sections (
@@ -60,16 +69,18 @@ create table if not exists public.corpus_document_sections (
   primary key (document_id, class_id)
 );
 
--- 4. RLS --------------------------------------------------------------------
+-- 5. RLS enable -------------------------------------------------------------
 alter table public.courses enable row level security;
 alter table public.corpus_document_sections enable row level security;
 
--- Courses/sections are provisioned server-side with the service-role key
--- (which bypasses RLS), so only SELECT policies are needed — same pattern as
--- the existing classes table.
+-- 6. (Re)create policies — each guarded with drop-if-exists so the file is
+--    re-runnable. Courses/sections are provisioned server-side with the
+--    service-role key (bypasses RLS), so only SELECT policies are needed.
+drop policy if exists courses_select on public.courses;
 create policy courses_select on public.courses
   for select using (school_id = (select school_id from public.current_app_user()));
 
+drop policy if exists corpus_document_sections_select on public.corpus_document_sections;
 create policy corpus_document_sections_select on public.corpus_document_sections
   for select using (
     class_id in (
@@ -79,11 +90,6 @@ create policy corpus_document_sections_select on public.corpus_document_sections
     or document_id in (select id from public.corpus_documents where uploaded_by = auth.uid())
   );
 
--- Rewrite the policies that used to reach the school through
--- corpus_documents.class_id — that column is gone; they now go through the
--- join table. drop-then-create because 0001/0003 already created them live.
-
-drop policy if exists corpus_documents_select on public.corpus_documents;
 create policy corpus_documents_select on public.corpus_documents
   for select using (
     uploaded_by = auth.uid()
@@ -94,7 +100,6 @@ create policy corpus_documents_select on public.corpus_documents
     )
   );
 
-drop policy if exists corpus_chunks_select on public.corpus_chunks;
 create policy corpus_chunks_select on public.corpus_chunks
   for select using (
     document_id in (select id from public.corpus_documents where uploaded_by = auth.uid())
@@ -105,7 +110,6 @@ create policy corpus_chunks_select on public.corpus_chunks
     )
   );
 
-drop policy if exists generated_questions_select on public.generated_questions;
 create policy generated_questions_select on public.generated_questions
   for select using (
     generated_by = auth.uid()
@@ -120,7 +124,7 @@ create policy generated_questions_select on public.generated_questions
     )
   );
 
--- 5. Scope dashboards to a teacher's own students ---------------------------
+-- 7. Scope dashboards to a teacher's own students ---------------------------
 -- The 0001 policies let ANY teacher read EVERY student's attempts/events
 -- school-wide. Restrict a teacher to students enrolled in a section they
 -- teach (via class_enrollments); HOD/principal keep the school-wide view.
