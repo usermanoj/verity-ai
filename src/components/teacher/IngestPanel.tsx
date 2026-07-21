@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { TeacherDocument } from "@/lib/ingestion/documents";
+import { currentAcademicYear } from "@/lib/ingestion/academic-year";
 import ChunkQuestions from "./ChunkQuestions";
 
 type Doc = TeacherDocument;
@@ -86,6 +87,25 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
             className="w-28 rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)]"
           />
         </div>
+        <div>
+          <label className="mb-1 block text-xs text-[var(--muted)]">Academic year</label>
+          <input
+            type="text"
+            name="academicYear"
+            defaultValue={currentAcademicYear()}
+            className="w-28 rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)]"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-[var(--muted)]">Section(s)</label>
+          <input
+            type="text"
+            name="sections"
+            required
+            placeholder="7A or 7A, 7B"
+            className="w-32 rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)]"
+          />
+        </div>
         <button
           type="submit"
           disabled={uploading}
@@ -94,6 +114,9 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           {uploading ? "Uploading…" : "Upload"}
         </button>
       </form>
+      <p className="text-xs text-[var(--muted)]">
+        Enter one section, or several of your own sections (comma-separated) to apply this material to all of them.
+      </p>
       {error && <p className="text-sm text-[var(--warn)]">{error}</p>}
 
       <div className="flex items-center justify-between">
