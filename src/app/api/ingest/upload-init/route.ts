@@ -1,21 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { start } from "workflow/api";
 import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { uploadCorpusFile } from "@/lib/supabase/storage";
+import { createSignedUploadUrl } from "@/lib/supabase/storage";
 import { resolveTeacherSections } from "@/lib/ingestion/class";
 import { currentAcademicYear, parseSections } from "@/lib/ingestion/academic-year";
 import { isSupportedExtension } from "@/lib/ingestion/extract";
-import { ingestDocumentWorkflow } from "@/workflows/ingest-document";
 
 export const runtime = "nodejs";
 
-// Bounds cost/abuse now that real teachers (not just the founder) can upload.
-// Curriculum .docx/.pdf are small; 20 MB is generous headroom without being
-// open-ended.
-const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+// A generous but bounded per-file cap. Unlike the old single-request upload
+// route, this is no longer constrained by Vercel's ~4.5 MB function payload
+// limit (bytes never pass through this route — see upload-complete.ts) —
+// this is purely a cost/abuse bound now, not a platform ceiling.
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
+type FileMeta = { name: string; size: number };
+
+// Step 1 of 2 for a direct-to-storage upload: validate the request and the
+// teacher's sections, create the corpus_documents/corpus_document_sections
+// rows, and mint one signed upload URL per file. No file bytes are received
+// here — the client uploads directly to Supabase Storage next, then calls
+// POST /api/ingest/upload-complete once each upload succeeds.
 export async function POST(req: NextRequest) {
   if (!hasSupabase()) {
     return NextResponse.json({ error: "Ingestion isn't configured for this deployment yet." }, { status: 503 });
@@ -26,22 +32,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Only signed-in teachers can upload." }, { status: 403 });
   }
 
-  const form = await req.formData();
-  const files = form.getAll("file").filter((f): f is File => f instanceof File);
-  const subject = (form.get("subject") as string | null) || "Physics";
-  const grade = (form.get("grade") as string | null) || "Grade 7";
-  const academicYear = ((form.get("academicYear") as string | null) || "").trim() || currentAcademicYear();
-  const sectionNames = parseSections((form.get("sections") as string | null) || "");
+  const body = (await req.json().catch(() => null)) as {
+    subject?: string;
+    grade?: string;
+    academicYear?: string;
+    sections?: string;
+    files?: FileMeta[];
+  } | null;
+  if (!body) {
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
+
+  const subject = body.subject || "Physics";
+  const grade = body.grade || "Grade 7";
+  const academicYear = (body.academicYear || "").trim() || currentAcademicYear();
+  const sectionNames = parseSections(body.sections || "");
+  const files = Array.isArray(body.files) ? body.files : [];
 
   if (files.length === 0) {
     return NextResponse.json({ error: "No file provided." }, { status: 400 });
   }
 
-  // Validate every file up front so a bad one in the batch fails the whole
-  // request cleanly, rather than half-importing.
   for (const file of files) {
+    if (typeof file.name !== "string" || typeof file.size !== "number") {
+      return NextResponse.json({ error: "Invalid file metadata." }, { status: 400 });
+    }
     if (file.size > MAX_UPLOAD_BYTES) {
-      return NextResponse.json({ error: `"${file.name}" is too large (max 20 MB).` }, { status: 400 });
+      return NextResponse.json({ error: `"${file.name}" is too large (max 100 MB).` }, { status: 400 });
     }
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     if (!isSupportedExtension(ext)) {
@@ -64,7 +81,7 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = supabaseAdmin();
-  const documentIds: string[] = [];
+  const results: { name: string; documentId: string; path: string; token: string }[] = [];
 
   for (const file of files) {
     const { data: doc, error } = await admin
@@ -76,7 +93,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Failed to create record for "${file.name}".` }, { status: 500 });
     }
 
-    // Map the document to every section it applies to (the uploader's own).
     const { error: mapError } = await admin
       .from("corpus_document_sections")
       .insert(resolved.classIds.map((classId) => ({ document_id: doc.id, class_id: classId })));
@@ -85,15 +101,9 @@ export async function POST(req: NextRequest) {
     }
 
     const storagePath = `${doc.id}/${file.name}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await uploadCorpusFile(storagePath, buffer, file.type || "application/octet-stream");
-
-    // Executes asynchronously — extraction/chunking can take longer than a
-    // single request should block for, and then suspends entirely (at zero
-    // cost) until the teacher approves or rejects it.
-    await start(ingestDocumentWorkflow, [doc.id, storagePath]);
-    documentIds.push(doc.id);
+    const { path, token } = await createSignedUploadUrl(storagePath);
+    results.push({ name: file.name, documentId: doc.id, path, token });
   }
 
-  return NextResponse.json({ documentIds, status: "processing" });
+  return NextResponse.json({ files: results });
 }
