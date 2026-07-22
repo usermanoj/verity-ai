@@ -15,6 +15,10 @@ export async function GET() {
     return NextResponse.json({ error: "Only signed-in teachers can view this." }, { status: 403 });
   }
 
-  const documents = await listTeacherDocuments(user.id);
-  return NextResponse.json({ documents });
+  try {
+    const documents = await listTeacherDocuments(user.id);
+    return NextResponse.json({ documents });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to load documents." }, { status: 500 });
+  }
 }
