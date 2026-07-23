@@ -152,6 +152,8 @@ These are product requirements in the buyer's eyes, not internal checkboxes:
 
 ## 7. Environments
 
+- **Function region — `sin1` (Singapore), set in `vercel.json`.** Vercel defaults new projects to `iad1` (Washington DC), while Supabase was deliberately provisioned in Singapore for PDPA data residency. Every database query therefore crossed the Pacific twice. Measured on a **completely empty** database: `auth 837ms · db 699ms · network 1400ms` — 2.9s to list zero documents. The static homepage stayed fast throughout precisely because it makes no database calls, which is what made this look like an application bug for two days rather than a geography one. Colocating compute with the database (and with the school's users) removes both crossings. **Any future Supabase region change must be matched here.**
+
 - **Production** — `main` branch, auto-deployed by Vercel's GitHub integration to `esltech.vercel.app` on every push.
 - **Staging** — `staging` branch, auto-deployed by the same integration to its own Vercel-assigned preview URL. Workflow: land feature work on `staging` first, verify there, then merge `staging` → `main` to release.
 - **CI gate** — every push/PR to `main` runs `.github/workflows/ci.yml` (lint, build, vitest). Branch protection on `main` requires the `build-and-test` check and blocks force-pushes/deletions; repo admins remain able to push directly (`enforce_admins: false`) since there's no second engineer yet to review PRs.
