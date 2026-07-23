@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { TeacherChunk } from "@/lib/ingestion/documents";
+import { PRESSABLE } from "@/lib/ui";
 
 export default function ChunkQuestions({ chunk, onChanged }: { chunk: TeacherChunk; onChanged: () => void }) {
   const [generating, setGenerating] = useState(false);
@@ -73,22 +74,30 @@ export default function ChunkQuestions({ chunk, onChanged }: { chunk: TeacherChu
               </span>
             </label>
           ))}
-          <button
-            onClick={submitReview}
-            disabled={submitting}
-            className="rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-          >
-            {submitting ? "Saving…" : "Save decisions (checked = approve)"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={submitReview}
+              disabled={submitting}
+              className={`rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 ${PRESSABLE}`}
+            >
+              {submitting ? "Saving…" : "Save decisions (checked = approve)"}
+            </button>
+            {submitting && <span className="text-xs text-[var(--muted)]">Saving your choices…</span>}
+          </div>
         </div>
       ) : (
-        <button
-          onClick={generate}
-          disabled={generating}
-          className="mt-1 text-xs text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-50"
-        >
-          {generating ? "Generating…" : "+ Generate practice questions"}
-        </button>
+        <div className="mt-1 flex items-center gap-2">
+          <button
+            onClick={generate}
+            disabled={generating}
+            className={`rounded-lg px-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-60 ${PRESSABLE}`}
+          >
+            {generating ? "Generating…" : "+ Generate practice questions"}
+          </button>
+          {generating && (
+            <span className="text-xs text-[var(--muted)]">Writing questions from this chunk — this takes a few seconds.</span>
+          )}
+        </div>
       )}
     </div>
   );

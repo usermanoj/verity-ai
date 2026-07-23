@@ -5,6 +5,7 @@ import type { TeacherDocument } from "@/lib/ingestion/documents";
 import { currentAcademicYear } from "@/lib/ingestion/academic-year";
 import { CORPUS_BUCKET } from "@/lib/ingestion/bucket";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { PRESSABLE } from "@/lib/ui";
 import ChunkQuestions from "./ChunkQuestions";
 
 type Doc = TeacherDocument;
@@ -63,6 +64,9 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   // Friendly, non-error guidance (upload confirmed, be patient, etc.) —
   // kept separate from `error` so success and failure never share styling.
   const [notice, setNotice] = useState<string | null>(null);
+  // Which document is mid approve/reject, so that card's own buttons can show
+  // the pending state rather than sitting inert until the server replies.
+  const [reviewing, setReviewing] = useState<{ id: string; approved: boolean } | null>(null);
   // Re-entry guard read synchronously; `uploading` state can be stale inside
   // an in-flight handler's closure.
   const busyRef = useRef(false);
@@ -144,12 +148,16 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
 
     busyRef.current = true;
     setError(null);
-    setNotice(null);
     setUploading(true);
     setUploadProgress(null);
-    // Rendered before the first await, so the teacher sees their files
-    // appear instantly on click — the confirmation that was missing.
+    // Both of these render before the first await, so clicking Upload gives
+    // an instant, visible acknowledgement — the placeholder cards *and* a
+    // message. Waiting for the round-trip to say anything is what left people
+    // guessing (and clicking Upload again).
     setPendingNames(fileList.map((f) => f.name));
+    setNotice(
+      `Uploading ${fileList.length} file${fileList.length > 1 ? "s" : ""}… please keep this tab open.`,
+    );
     try {
       const initRes = await fetch("/api/ingest/upload-init", {
         method: "POST",
@@ -228,12 +236,37 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   }
 
   async function review(documentId: string, approved: boolean) {
-    await fetch("/api/ingest/review", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ documentId, approved }),
-    });
-    await refresh();
+    // Acknowledge on the control the teacher actually clicked — the top-of-
+    // page notice alone isn't enough, since a document lower down the list
+    // can be well below the fold when its Approve button is pressed.
+    if (reviewing) return;
+    setReviewing({ id: documentId, approved });
+    setError(null);
+    setNotice(approved ? "Approving — saving your decision…" : "Rejecting — saving your decision…");
+    try {
+      const res = await fetch("/api/ingest/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId, approved }),
+      });
+      if (!res.ok) {
+        const data = await safeJson(res);
+        setError((data.error as string | undefined) || "Couldn't save your decision — please try again.");
+        setNotice(null);
+        return;
+      }
+      setNotice(
+        approved
+          ? "✓ Approved — this material is now part of your class corpus. You can generate practice questions from it below."
+          : "✗ Rejected — this material won't be used, and its extracted chunks have been discarded.",
+      );
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save your decision — please try again.");
+      setNotice(null);
+    } finally {
+      setReviewing(null);
+    }
   }
 
   return (
@@ -300,7 +333,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         <button
           type="submit"
           aria-disabled={uploading}
-          className={`rounded-xl bg-[var(--brand)] px-5 py-2 text-sm font-medium text-white transition ${
+          className={`rounded-xl bg-[var(--brand)] px-5 py-2 text-sm font-medium text-white ${PRESSABLE} ${
             uploading ? "cursor-not-allowed opacity-60" : "hover:-translate-y-0.5"
           }`}
         >
@@ -321,7 +354,11 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         {anyProcessing ? (
           <span className="text-xs text-[var(--warn)]">● Auto-updating while processing…</span>
         ) : (
-          <button onClick={refresh} disabled={loading} className="text-xs text-[var(--muted)] hover:text-[var(--text)]">
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className={`rounded-lg px-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-60 ${PRESSABLE}`}
+          >
             {loading ? "Refreshing…" : "↻ Refresh"}
           </button>
         )}
@@ -384,19 +421,28 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
             )}
 
             {doc.status === "pending" && doc.chunks.length > 0 && (
-              <div className="mt-3 flex gap-2">
+              <div className="mt-3 flex items-center gap-2">
                 <button
                   onClick={() => review(doc.id, true)}
-                  className="rounded-lg bg-[var(--good)] px-3 py-1.5 text-xs font-medium text-black"
+                  aria-disabled={reviewing !== null}
+                  className={`rounded-lg bg-[var(--good)] px-3 py-1.5 text-xs font-medium text-black ${PRESSABLE} ${
+                    reviewing !== null ? "cursor-not-allowed opacity-60" : ""
+                  }`}
                 >
-                  ✓ Approve
+                  {reviewing?.id === doc.id && reviewing.approved ? "Approving…" : "✓ Approve"}
                 </button>
                 <button
                   onClick={() => review(doc.id, false)}
-                  className="rounded-lg bg-[var(--bad)] px-3 py-1.5 text-xs font-medium text-white"
+                  aria-disabled={reviewing !== null}
+                  className={`rounded-lg bg-[var(--bad)] px-3 py-1.5 text-xs font-medium text-white ${PRESSABLE} ${
+                    reviewing !== null ? "cursor-not-allowed opacity-60" : ""
+                  }`}
                 >
-                  ✗ Reject
+                  {reviewing?.id === doc.id && !reviewing.approved ? "Rejecting…" : "✗ Reject"}
                 </button>
+                {reviewing?.id === doc.id && (
+                  <span className="text-xs text-[var(--muted)]">Saving your decision…</span>
+                )}
               </div>
             )}
           </div>
