@@ -34,6 +34,24 @@ const PAGES_PER_BATCH = 8;
 // is given, it never generates new claims — the same "closed-corpus"
 // discipline as the tutor itself, applied to ingestion.
 export async function chunkExtractedText(sourceFileName: string, pages: ExtractedPage[]): Promise<AiChunk[]> {
+  const ext = sourceFileName.split(".").pop()?.toLowerCase();
+
+  // PPTX: each slide is authored as a discrete topic with its own title, so
+  // it is ALREADY a chunk. Skip the model entirely — no network call at all.
+  // This is both far faster (a slide deck was the whole "Processing…" wait)
+  // and *better* chunking than asking a model to re-derive boundaries the
+  // deck already defines. The teacher reviews every chunk regardless, so a
+  // rare over-long slide is caught. Prose formats (DOCX/TXT = one big block;
+  // PDF = layout pages that don't map cleanly to concepts) have no such
+  // natural boundaries and still need the model.
+  if (ext === "pptx") {
+    return pages.map((p) => ({
+      heading: deriveHeading(p.text),
+      text: p.text.trim(),
+      pageOrSection: p.pageOrSection,
+    }));
+  }
+
   const batches: ExtractedPage[][] = [];
   for (let i = 0; i < pages.length; i += PAGES_PER_BATCH) {
     batches.push(pages.slice(i, i + PAGES_PER_BATCH));
@@ -44,6 +62,18 @@ export async function chunkExtractedText(sourceFileName: string, pages: Extracte
   // Restore document order: batches resolve in whatever order they finish,
   // but chunks must stay in reading order for the teacher's review.
   return results.flat().sort((a, b) => a.pageOrSection - b.pageOrSection);
+}
+
+// A slide's heading is its title — reliably the first non-empty line, since
+// that's where slide layouts put it. Capped so a title-less slide (whose
+// first line is body text) still yields a sane label.
+function deriveHeading(slideText: string): string {
+  const firstLine = slideText
+    .split("\n")
+    .map((l) => l.trim())
+    .find(Boolean);
+  if (!firstLine) return "Slide";
+  return firstLine.length > 80 ? `${firstLine.slice(0, 79)}…` : firstLine;
 }
 
 async function chunkBatch(sourceFileName: string, pages: ExtractedPage[]): Promise<AiChunk[]> {

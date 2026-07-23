@@ -120,6 +120,8 @@ export default function IngestPanel() {
   // guesswork: it separates network+transfer (roundTripMs) from server work
   // (serverMs, split into auth vs db) and shows the payload size driving it.
   const [diag, setDiag] = useState<string | null>(null);
+  // Page-load breakdown (TTFB + interactive), captured once on mount.
+  const [pageDiag, setPageDiag] = useState<string | null>(null);
   // Filenames shown as instant placeholder cards the moment Upload is
   // clicked, before any network call returns. Without this there's a dead
   // zone where nothing visibly happens, which is what makes people click
@@ -180,6 +182,20 @@ export default function IngestPanel() {
         const res = await fetch("/api/ingest/documents", { cache: "no-store" });
         const { data, bytes } = await safeJson(res);
         if (cancelled) return;
+
+        // One-time page-load breakdown from the browser's Navigation Timing
+        // API: TTFB is the server render (auth-gated) before any HTML
+        // shipped; interactive is when the DOM was ready (bundle downloaded +
+        // parsed). This is the part the API timing can't see — the actual
+        // "load the page" cost. Read after the await so the setState isn't
+        // synchronous in the effect body (react-hooks/set-state-in-effect).
+        const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+        if (nav && nav.responseStart > 0) {
+          const ttfb = Math.round(nav.responseStart - nav.requestStart);
+          const ready = Math.round(nav.domContentLoadedEventEnd || nav.domInteractive);
+          setPageDiag(`page: TTFB ${ttfb}ms (server render) · interactive ${ready}ms (bundle)`);
+        }
+
         setDiag(
           formatDiagnostics(data.timings as ListTimings | undefined, Math.round(performance.now() - startedAt), bytes),
         );
@@ -562,7 +578,13 @@ export default function IngestPanel() {
         <p className="text-sm text-[var(--muted)]">No uploads yet.</p>
       )}
 
-      {diag && <p className="pt-2 text-[11px] text-[var(--muted)]/70">⏱ {diag}</p>}
+      {(pageDiag || diag) && (
+        <p className="pt-2 text-[11px] leading-relaxed text-[var(--muted)]/70">
+          {pageDiag && <>⏱ {pageDiag}</>}
+          {pageDiag && diag && <br />}
+          {diag && <>⏱ {diag}</>}
+        </p>
+      )}
 
       {sortedDocs.map((doc) => {
         // Anything with extracted content can be expanded/collapsed — that
