@@ -12,6 +12,15 @@
 export const MODEL = process.env.AI_MODEL || "anthropic/claude-sonnet-5";
 export const TRANSLATE_MODEL = process.env.AI_TRANSLATE_MODEL || MODEL;
 
+// Ingestion chunking runs on the fast/cheap tier by default, not the primary
+// model. Chunking is a mechanical extraction task ("split faithfully, never
+// invent") where top-tier reasoning adds latency, not quality — and it was
+// the dominant share of the 30-60s+ a teacher watched "Processing…" after
+// every upload. Any chunking slip is also caught by design: a teacher
+// reviews every chunk before approval, which is exactly what makes the
+// faster tier safe here. Tutoring/question-generation stay on MODEL.
+export const CHUNK_MODEL = process.env.AI_CHUNK_MODEL || "anthropic/claude-haiku-4.5";
+
 // AI_GATEWAY_API_KEY is scoped per Vercel environment (Production, and
 // Preview restricted to the staging branch) — other branches' PR previews
 // have no value here and correctly stay in demo mode.
