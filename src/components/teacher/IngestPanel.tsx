@@ -128,6 +128,14 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   // file's bytes actually landed, which is what starts the (real-cost)
   // extraction workflow — a file whose direct upload never finishes never
   // triggers processing.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    // Fire-and-forget: the synchronous part of upload() (which sets the
+    // pending message and placeholder cards) runs inside this event handler,
+    // so React flushes it before the next paint.
+    void upload(new FormData(e.currentTarget));
+  }
+
   async function upload(form: FormData) {
     const fileList = form.getAll("file").filter((f): f is File => f instanceof File);
 
@@ -271,8 +279,15 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
 
   return (
     <div className="space-y-6">
+      {/* Plain onSubmit, NOT React 19's `action={fn}`: a form action is
+          implicitly wrapped in a transition, which *defers* the state updates
+          inside it — so "show the message before the first await" silently
+          never rendered until the whole upload finished. That deferral is why
+          pending UI for form actions needs useActionState/useFormStatus (see
+          next/dist/docs/01-app/02-guides/forms.md). A normal submit handler
+          keeps our updates urgent, so feedback paints on the next frame. */}
       <form
-        action={upload}
+        onSubmit={handleSubmit}
         className="glass flex flex-wrap items-end gap-3 rounded-3xl p-5"
       >
         <div className="flex-1">
@@ -344,8 +359,26 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         Pick one or more files at once. Enter one section, or several of your own sections (comma-separated) to apply
         this material to all of them.
       </p>
+      {/* Status lives in a fixed toast, not an inline banner: an inline
+          message sits wherever the page happens to be scrolled, so the
+          confirmation for a button pressed further down the list can appear
+          entirely off-screen. Errors stay inline below (persistent, needs
+          reading); transient status goes here (impossible to miss). */}
       {notice && (
-        <p className="rounded-2xl bg-[rgba(99,102,241,0.12)] px-4 py-3 text-sm text-[var(--brand2)]">{notice}</p>
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed left-1/2 top-6 z-50 flex max-w-[92vw] -translate-x-1/2 items-start gap-3 rounded-2xl bg-[var(--brand)] px-4 py-3 text-sm text-white shadow-2xl ring-1 ring-white/15"
+        >
+          <span>{notice}</span>
+          <button
+            onClick={() => setNotice(null)}
+            aria-label="Dismiss"
+            className={`-mr-1 shrink-0 rounded-md px-1.5 text-white/70 hover:text-white ${PRESSABLE}`}
+          >
+            ×
+          </button>
+        </div>
       )}
       {error && <p className="text-sm text-[var(--warn)]">{error}</p>}
 
