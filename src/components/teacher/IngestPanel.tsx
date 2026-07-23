@@ -55,6 +55,17 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   // shown open; finished ones stay collapsed unless opened, so approving a
   // deck tidies it away instead of leaving its chunks on screen.
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  // Filenames shown as instant placeholder cards the moment Upload is
+  // clicked, before any network call returns. Without this there's a dead
+  // zone where nothing visibly happens, which is what makes people click
+  // Upload a second time.
+  const [pendingNames, setPendingNames] = useState<string[]>([]);
+  // Friendly, non-error guidance (upload confirmed, be patient, etc.) —
+  // kept separate from `error` so success and failure never share styling.
+  const [notice, setNotice] = useState<string | null>(null);
+  // Re-entry guard read synchronously; `uploading` state can be stale inside
+  // an in-flight handler's closure.
+  const busyRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -114,13 +125,32 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   // extraction workflow — a file whose direct upload never finishes never
   // triggers processing.
   async function upload(form: FormData) {
+    const fileList = form.getAll("file").filter((f): f is File => f instanceof File);
+
+    // Clicking Upload again mid-flight gets a real explanation rather than a
+    // dead, unresponsive button.
+    if (busyRef.current) {
+      setNotice("Still uploading your last batch — hang tight, it'll appear below automatically.");
+      return;
+    }
+    if (fileList.length === 0) {
+      setNotice(
+        documents.some(isProcessing)
+          ? "Your last upload is still being processed — it'll appear below automatically when it's ready. Pick more files to add another."
+          : "Choose at least one file to upload.",
+      );
+      return;
+    }
+
+    busyRef.current = true;
     setError(null);
+    setNotice(null);
     setUploading(true);
     setUploadProgress(null);
+    // Rendered before the first await, so the teacher sees their files
+    // appear instantly on click — the confirmation that was missing.
+    setPendingNames(fileList.map((f) => f.name));
     try {
-      const fileList = form.getAll("file").filter((f): f is File => f instanceof File);
-      if (fileList.length === 0) throw new Error("Choose at least one file.");
-
       const initRes = await fetch("/api/ingest/upload-init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -171,9 +201,15 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
       );
 
       const failures = results.filter((r): r is string => r !== null);
+      const okCount = targets.length - failures.length;
       if (failures.length > 0) {
-        const okCount = targets.length - failures.length;
         setError(`${okCount}/${targets.length} file(s) uploaded. Failed — ${failures.join("; ")}`);
+      }
+      if (okCount > 0) {
+        setNotice(
+          `✓ ${okCount} file${okCount > 1 ? "s" : ""} uploaded — now extracting the content. ` +
+            `This list updates itself, so there's no need to refresh or upload again.`,
+        );
       }
 
       // Clear the picked files so a second click can't silently re-upload
@@ -184,8 +220,10 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
+      busyRef.current = false;
       setUploading(false);
       setUploadProgress(null);
+      setPendingNames([]);
     }
   }
 
@@ -206,13 +244,15 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
       >
         <div className="flex-1">
           <label className="mb-1 block text-xs text-[var(--muted)]">Files (.docx, .pdf, .pptx, .txt)</label>
+          {/* Deliberately not `required` — validation is handled in upload()
+              so an empty submit can explain *why* (e.g. "your last upload is
+              still processing") instead of a generic browser tooltip. */}
           <input
             ref={fileInputRef}
             type="file"
             name="file"
             accept=".docx,.pdf,.pptx,.txt"
             multiple
-            required
             className="w-full rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)]"
           />
         </div>
@@ -253,10 +293,16 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
             className="w-32 rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)]"
           />
         </div>
+        {/* aria-disabled (not `disabled`) so a second click still reaches the
+            handler and gets a "still uploading" explanation — a truly
+            disabled button would silently swallow it, which is what made the
+            UI feel unresponsive. */}
         <button
           type="submit"
-          disabled={uploading}
-          className="rounded-xl bg-[var(--brand)] px-5 py-2 text-sm font-medium text-white transition hover:-translate-y-0.5 disabled:opacity-50"
+          aria-disabled={uploading}
+          className={`rounded-xl bg-[var(--brand)] px-5 py-2 text-sm font-medium text-white transition ${
+            uploading ? "cursor-not-allowed opacity-60" : "hover:-translate-y-0.5"
+          }`}
         >
           {uploading ? (uploadProgress ? `Uploading ${uploadProgress}…` : "Uploading…") : "Upload"}
         </button>
@@ -265,6 +311,9 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         Pick one or more files at once. Enter one section, or several of your own sections (comma-separated) to apply
         this material to all of them.
       </p>
+      {notice && (
+        <p className="rounded-2xl bg-[rgba(99,102,241,0.12)] px-4 py-3 text-sm text-[var(--brand2)]">{notice}</p>
+      )}
       {error && <p className="text-sm text-[var(--warn)]">{error}</p>}
 
       <div className="flex items-center justify-between">
@@ -278,7 +327,23 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         )}
       </div>
 
-      {documents.length === 0 && <p className="text-sm text-[var(--muted)]">No uploads yet.</p>}
+      {/* Instant optimistic cards — visible the moment Upload is clicked,
+          replaced by the real documents as soon as the server confirms. */}
+      {pendingNames.map((name, i) => (
+        <div key={`pending-${i}`} className="glass rounded-3xl p-5 opacity-70">
+          <div className="flex items-center justify-between">
+            <div className="font-medium">{name}</div>
+            <span className="rounded-full bg-[rgba(99,102,241,0.16)] px-2 py-0.5 text-xs text-[var(--brand2)]">
+              Uploading…
+            </span>
+          </div>
+          <p className="mt-2 text-xs text-[var(--muted)]">Sending securely — please keep this tab open.</p>
+        </div>
+      ))}
+
+      {documents.length === 0 && pendingNames.length === 0 && (
+        <p className="text-sm text-[var(--muted)]">No uploads yet.</p>
+      )}
 
       {sortedDocs.map((doc) => {
         const collapsible = doc.status === "approved" || doc.status === "rejected";
