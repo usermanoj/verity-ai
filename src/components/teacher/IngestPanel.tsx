@@ -56,14 +56,38 @@ function statusRank(doc: Doc): number {
 // A response can be JSON (our own API routes) or plain text (a platform-
 // level rejection that never reached our code) — never assume .json() will
 // succeed. Reads the body once as text, since a failed .json() call already
-// consumes the body and a second .text() call would throw.
-async function safeJson(res: Response): Promise<{ error?: string; [key: string]: unknown }> {
+// consumes the body and a second .text() call would throw. Also reports the
+// byte size, which is what makes a slow load diagnosable.
+async function safeJson(res: Response): Promise<{
+  data: { error?: string; [key: string]: unknown };
+  bytes: number;
+}> {
   const text = await res.text().catch(() => "");
+  const bytes = new TextEncoder().encode(text).length;
   try {
-    return JSON.parse(text);
+    return { data: JSON.parse(text), bytes };
   } catch {
-    return { error: text || `Request failed (${res.status}).` };
+    return { data: { error: text || `Request failed (${res.status}).` }, bytes };
   }
+}
+
+type ListTimings = {
+  authMs?: number;
+  queryMs?: number;
+  serverMs?: number;
+  documentCount?: number;
+  chunksShipped?: number;
+};
+
+function formatDiagnostics(timings: ListTimings | undefined, roundTripMs: number, bytes: number): string {
+  const kb = (bytes / 1024).toFixed(0);
+  if (!timings) return `list loaded in ${roundTripMs}ms · ${kb} kB`;
+  const network = Math.max(0, roundTripMs - (timings.serverMs ?? 0));
+  return (
+    `list loaded in ${roundTripMs}ms — server ${timings.serverMs ?? "?"}ms ` +
+    `(auth ${timings.authMs ?? "?"}ms · db ${timings.queryMs ?? "?"}ms), network ${network}ms · ` +
+    `${kb} kB · ${timings.documentCount ?? "?"} docs, ${timings.chunksShipped ?? "?"} chunks shipped`
+  );
 }
 
 // The document list is fetched here rather than server-rendered into the
@@ -91,6 +115,11 @@ export default function IngestPanel() {
   const [toggledIds, setToggledIds] = useState<Set<string>>(new Set());
   // Which document is currently fetching its chunk text after being expanded.
   const [chunksLoadingId, setChunksLoadingId] = useState<string | null>(null);
+  // Where the time actually goes on a list load. Shown as a small line under
+  // the list so a slow load can be diagnosed from one screenshot instead of
+  // guesswork: it separates network+transfer (roundTripMs) from server work
+  // (serverMs, split into auth vs db) and shows the payload size driving it.
+  const [diag, setDiag] = useState<string | null>(null);
   // Filenames shown as instant placeholder cards the moment Upload is
   // clicked, before any network call returns. Without this there's a dead
   // zone where nothing visibly happens, which is what makes people click
@@ -112,8 +141,10 @@ export default function IngestPanel() {
     try {
       // no-store: a plain GET can be served from the browser/HTTP cache,
       // which made "Refresh" look like it did nothing — force a fresh read.
+      const startedAt = performance.now();
       const res = await fetch("/api/ingest/documents", { cache: "no-store" });
-      const data = await safeJson(res);
+      const { data, bytes } = await safeJson(res);
+      setDiag(formatDiagnostics(data.timings as ListTimings | undefined, Math.round(performance.now() - startedAt), bytes));
       if (!res.ok) {
         setError((data.error as string | undefined) || "Couldn't load your uploads.");
         return;
@@ -145,9 +176,13 @@ export default function IngestPanel() {
     let cancelled = false;
     void (async () => {
       try {
+        const startedAt = performance.now();
         const res = await fetch("/api/ingest/documents", { cache: "no-store" });
-        const data = await safeJson(res);
+        const { data, bytes } = await safeJson(res);
         if (cancelled) return;
+        setDiag(
+          formatDiagnostics(data.timings as ListTimings | undefined, Math.round(performance.now() - startedAt), bytes),
+        );
         if (!res.ok) setError((data.error as string | undefined) || "Couldn't load your uploads.");
         else setDocuments((data.documents as Doc[] | undefined) ?? []);
       } catch (err) {
@@ -186,7 +221,7 @@ export default function IngestPanel() {
     setChunksLoadingId(id);
     try {
       const res = await fetch(`/api/ingest/chunks?documentId=${encodeURIComponent(id)}`, { cache: "no-store" });
-      const data = await safeJson(res);
+      const { data } = await safeJson(res);
       if (!res.ok) {
         setError((data.error as string | undefined) || "Couldn't load this document's content.");
         return;
@@ -285,7 +320,7 @@ export default function IngestPanel() {
           files: fileList.map((f) => ({ name: f.name, size: f.size })),
         }),
       });
-      const initData = await safeJson(initRes);
+      const { data: initData } = await safeJson(initRes);
       if (!initRes.ok) throw new Error((initData.error as string | undefined) || "Upload failed.");
 
       const targets =
@@ -314,7 +349,7 @@ export default function IngestPanel() {
           });
           setUploadProgress(`${(done += 1)}/${targets.length}`);
           if (!completeRes.ok) {
-            const completeData = await safeJson(completeRes);
+            const { data: completeData } = await safeJson(completeRes);
             return `"${target.name}": ${(completeData.error as string | undefined) || "failed to start processing"}`;
           }
           return null;
@@ -363,7 +398,7 @@ export default function IngestPanel() {
         body: JSON.stringify({ documentId, approved }),
       });
       if (!res.ok) {
-        const data = await safeJson(res);
+        const { data } = await safeJson(res);
         setError((data.error as string | undefined) || "Couldn't save your decision — please try again.");
         setNotice(null);
         return;
@@ -526,6 +561,8 @@ export default function IngestPanel() {
       {loadedOnce && documents.length === 0 && pendingNames.length === 0 && (
         <p className="text-sm text-[var(--muted)]">No uploads yet.</p>
       )}
+
+      {diag && <p className="pt-2 text-[11px] text-[var(--muted)]/70">⏱ {diag}</p>}
 
       {sortedDocs.map((doc) => {
         // Anything with extracted content can be expanded/collapsed — that
