@@ -48,29 +48,48 @@ export async function listTeacherDocuments(teacherId: string): Promise<TeacherDo
     .eq("uploaded_by", teacherId)
     .order("created_at", { ascending: false });
   // A query error must never be silently treated as "no documents" — that's
-  // exactly what hid this bug behind a confusing "No uploads yet." once.
+  // exactly what hid a previous bug behind a confusing "No uploads yet."
   if (docsError) throw docsError;
+  if (!docs || docs.length === 0) return [];
 
-  const documents: TeacherDocument[] = [];
-  for (const doc of docs ?? []) {
-    const { data: chunks, error: chunksError } = await admin
-      .from("corpus_chunks")
-      .select("id, heading, text, citation")
-      .eq("document_id", doc.id);
-    if (chunksError) throw chunksError;
+  const docIds = docs.map((d) => d.id);
 
-    const chunksWithQuestions: TeacherChunk[] = [];
-    for (const chunk of chunks ?? []) {
-      const { data: questions, error: questionsError } = await admin
+  // Batched (3 queries total, not one-per-document/one-per-chunk): a real
+  // teacher's repeated test uploads produced dozens of documents with many
+  // chunks each, and the previous per-row-loop version turned that into
+  // hundreds of sequential round-trips — slow enough that the page never
+  // finished rendering (looked identical to a hang, not an error).
+  const { data: chunks, error: chunksError } = await admin
+    .from("corpus_chunks")
+    .select("id, document_id, heading, text, citation")
+    .in("document_id", docIds);
+  if (chunksError) throw chunksError;
+
+  const chunkIds = (chunks ?? []).map((c) => c.id);
+  const { data: questions, error: questionsError } = chunkIds.length
+    ? await admin
         .from("generated_questions")
-        .select("id, level, prompt, question, status")
-        .eq("chunk_id", chunk.id)
-        .neq("status", "rejected");
-      if (questionsError) throw questionsError;
-      chunksWithQuestions.push({ ...chunk, questions: questions ?? [] });
-    }
+        .select("id, chunk_id, level, prompt, question, status")
+        .in("chunk_id", chunkIds)
+        .neq("status", "rejected")
+    : { data: [], error: null };
+  if (questionsError) throw questionsError;
 
-    documents.push({ ...doc, chunks: chunksWithQuestions });
+  const questionsByChunk = new Map<string, GeneratedQuestionRow[]>();
+  for (const q of questions ?? []) {
+    const { chunk_id, ...rest } = q;
+    const list = questionsByChunk.get(chunk_id) ?? [];
+    list.push(rest);
+    questionsByChunk.set(chunk_id, list);
   }
-  return documents;
+
+  const chunksByDocument = new Map<string, TeacherChunk[]>();
+  for (const c of chunks ?? []) {
+    const { document_id, ...rest } = c;
+    const list = chunksByDocument.get(document_id) ?? [];
+    list.push({ ...rest, questions: questionsByChunk.get(c.id) ?? [] });
+    chunksByDocument.set(document_id, list);
+  }
+
+  return docs.map((doc) => ({ ...doc, chunks: chunksByDocument.get(doc.id) ?? [] }));
 }
