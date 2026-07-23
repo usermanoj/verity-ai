@@ -40,13 +40,26 @@ export type TeacherDocument = {
 // looked like it should trivially match, confirmed via a live upload test
 // where the documents/chunks demonstrably existed in the database but this
 // function (previously using the RLS-scoped client) never surfaced them.
+// Bounds worst-case page-load cost to a fixed amount of data regardless of
+// how much history has accumulated. A real teacher's repeated test uploads
+// produced dozens of documents with ~10-15 real AI-generated chunks each in
+// a single day — batching the chunk/question queries down to 3 total (see
+// below) wasn't enough on its own, because those 3 queries still pulled
+// every historical row's full text content, which was enough data to blow
+// through the serverless function's time limit (a live 504
+// FUNCTION_INVOCATION_TIMEOUT, not a hang). Recent-first with a cap is also
+// just the right product behavior — nobody needs every historical attempt
+// rendered on one page.
+const MAX_DOCUMENTS = 30;
+
 export async function listTeacherDocuments(teacherId: string): Promise<TeacherDocument[]> {
   const admin = supabaseAdmin();
   const { data: docs, error: docsError } = await admin
     .from("corpus_documents")
     .select("id, source_file, status, created_at")
     .eq("uploaded_by", teacherId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(MAX_DOCUMENTS);
   // A query error must never be silently treated as "no documents" — that's
   // exactly what hid a previous bug behind a confusing "No uploads yet."
   if (docsError) throw docsError;
@@ -54,11 +67,9 @@ export async function listTeacherDocuments(teacherId: string): Promise<TeacherDo
 
   const docIds = docs.map((d) => d.id);
 
-  // Batched (3 queries total, not one-per-document/one-per-chunk): a real
-  // teacher's repeated test uploads produced dozens of documents with many
-  // chunks each, and the previous per-row-loop version turned that into
-  // hundreds of sequential round-trips — slow enough that the page never
-  // finished rendering (looked identical to a hang, not an error).
+  // Batched (3 queries total, not one-per-document/one-per-chunk) — scoped
+  // to at most MAX_DOCUMENTS documents' worth of chunks/questions by the
+  // .limit() above, so this stays fast regardless of total historical volume.
   const { data: chunks, error: chunksError } = await admin
     .from("corpus_chunks")
     .select("id, document_id, heading, text, citation")
