@@ -84,7 +84,11 @@ export default function IngestPanel() {
   // expanded. Actionable ones (processing / ready-for-review) are always
   // shown open; finished ones stay collapsed unless opened, so approving a
   // deck tidies it away instead of leaving its chunks on screen.
-  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  // Documents whose open/closed state the teacher has flipped away from the
+  // default. The default is: only the one deck currently up for review is
+  // open — everything else is collapsed, so the page never renders hundreds
+  // of chunk cards at once.
+  const [toggledIds, setToggledIds] = useState<Set<string>>(new Set());
   // Which document is currently fetching its chunk text after being expanded.
   const [chunksLoadingId, setChunksLoadingId] = useState<string | null>(null);
   // Filenames shown as instant placeholder cards the moment Upload is
@@ -158,14 +162,16 @@ export default function IngestPanel() {
   }, []);
 
   function isOpen(doc: Doc): boolean {
-    // Processing and ready-for-review are always open (they need attention);
-    // approved/rejected are collapsed until the teacher clicks to expand.
-    if (doc.status === "pending") return true;
-    return openIds.has(doc.id);
+    // Open by default only for the single deck currently up for review;
+    // toggledIds flips that default in either direction.
+    const openByDefault = doc.id === firstReadyForReviewId;
+    return toggledIds.has(doc.id) ? !openByDefault : openByDefault;
   }
   async function toggleOpen(id: string) {
-    const opening = !openIds.has(id);
-    setOpenIds((prev) => {
+    const doc = documents.find((d) => d.id === id);
+    if (!doc) return;
+    const opening = !isOpen(doc);
+    setToggledIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -175,8 +181,7 @@ export default function IngestPanel() {
 
     // Collapsed documents ship without their chunk text (that's what keeps
     // the list fast) — fetch it the first time one is expanded.
-    const doc = documents.find((d) => d.id === id);
-    if (!doc || doc.chunkCount === 0 || doc.chunks.length > 0) return;
+    if (doc.chunkCount === 0 || doc.chunks.length > 0) return;
 
     setChunksLoadingId(id);
     try {
@@ -199,6 +204,13 @@ export default function IngestPanel() {
     const r = statusRank(a) - statusRank(b);
     return r !== 0 ? r : (b.created_at ?? "").localeCompare(a.created_at ?? "");
   });
+
+  // The one deck the teacher is being asked to review right now. It's the
+  // only one expanded by default, and the only one whose chunk text the
+  // list endpoint ships — the two must agree, so both pick the most recent
+  // ready-for-review document.
+  const firstReadyForReviewId =
+    sortedDocs.find((d) => d.status === "pending" && d.chunkCount > 0)?.id ?? null;
 
   // Auto-poll while any document is still processing, so the list updates
   // itself the moment extraction/chunking finishes — no manual refresh. The
@@ -516,7 +528,9 @@ export default function IngestPanel() {
       )}
 
       {sortedDocs.map((doc) => {
-        const collapsible = doc.status === "approved" || doc.status === "rejected";
+        // Anything with extracted content can be expanded/collapsed — that
+        // now includes pending decks other than the one up for review.
+        const collapsible = doc.chunkCount > 0;
         const open = isOpen(doc);
         return (
           <div key={doc.id} className="glass rounded-3xl p-5">

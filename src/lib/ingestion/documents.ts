@@ -94,7 +94,16 @@ export async function listTeacherDocuments(teacherId: string): Promise<TeacherDo
   // pulling their text here was pure waste: it dominated the payload and the
   // query time while never being displayed. Their text loads on expand via
   // GET /api/ingest/chunks instead.
-  const expandedDocIds = docs.filter((d) => d.status === "pending").map((d) => d.id);
+  // Only the ONE deck currently being reviewed — not every pending deck.
+  // Reviewing is sequential (you approve one deck at a time), and a teacher
+  // mid-testing can easily have dozens of decks sitting at 'pending': the
+  // earlier "all pending documents" version therefore pulled ~350 chunks of
+  // full slide text on every load *and* every 3.5s poll, and React rendered
+  // all 350 chunk cards into the DOM. Everything else loads on expand.
+  const firstReadyForReview = docs.find(
+    (d) => d.status === "pending" && (countByDocument.get(d.id) ?? 0) > 0,
+  );
+  const expandedDocIds = firstReadyForReview ? [firstReadyForReview.id] : [];
   const { data: chunks, error: chunksError } = expandedDocIds.length
     ? await admin
         .from("corpus_chunks")
