@@ -16,6 +16,16 @@ function isProcessing(doc: Doc): boolean {
   return doc.status === "pending" && doc.chunks.length === 0;
 }
 
+// Sort so the things that need the teacher's attention float to the top and
+// finished (approved/rejected) material sinks below — instead of a flat
+// newest-first pile where one approved deck's chunks bury everything.
+function statusRank(doc: Doc): number {
+  if (doc.status === "pending" && doc.chunks.length > 0) return 0; // ready for review — needs a click
+  if (isProcessing(doc)) return 1; // in progress — just uploaded
+  if (doc.status === "approved") return 2;
+  return 3; // rejected
+}
+
 // A response can be JSON (our own API routes) or plain text (a platform-
 // level rejection that never reached our code) — never assume .json() will
 // succeed. Reads the body once as text, since a failed .json() call already
@@ -40,18 +50,45 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Which finished (approved/rejected) documents the teacher has manually
+  // expanded. Actionable ones (processing / ready-for-review) are always
+  // shown open; finished ones stay collapsed unless opened, so approving a
+  // deck tidies it away instead of leaving its chunks on screen.
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/ingest/documents");
+      // no-store: a plain GET can be served from the browser/HTTP cache,
+      // which made "Refresh" look like it did nothing — force a fresh read.
+      const res = await fetch("/api/ingest/documents", { cache: "no-store" });
       const data = await safeJson(res);
       setDocuments((data.documents as Doc[] | undefined) ?? []);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  function isOpen(doc: Doc): boolean {
+    // Processing and ready-for-review are always open (they need attention);
+    // approved/rejected are collapsed until the teacher clicks to expand.
+    if (doc.status === "pending") return true;
+    return openIds.has(doc.id);
+  }
+  function toggleOpen(id: string) {
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const sortedDocs = [...documents].sort((a, b) => {
+    const r = statusRank(a) - statusRank(b);
+    return r !== 0 ? r : (b.created_at ?? "").localeCompare(a.created_at ?? "");
+  });
 
   // Auto-poll while any document is still processing, so the list updates
   // itself the moment extraction/chunking finishes — no manual refresh. The
@@ -243,48 +280,63 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
 
       {documents.length === 0 && <p className="text-sm text-[var(--muted)]">No uploads yet.</p>}
 
-      {documents.map((doc) => (
-        <div key={doc.id} className="glass rounded-3xl p-5">
-          <div className="flex items-center justify-between">
-            <div className="font-medium">{doc.source_file}</div>
-            <StatusBadge status={doc.status} hasChunks={doc.chunks.length > 0} />
+      {sortedDocs.map((doc) => {
+        const collapsible = doc.status === "approved" || doc.status === "rejected";
+        const open = isOpen(doc);
+        return (
+          <div key={doc.id} className="glass rounded-3xl p-5">
+            <div
+              className={`flex items-center justify-between ${collapsible ? "cursor-pointer select-none" : ""}`}
+              onClick={collapsible ? () => toggleOpen(doc.id) : undefined}
+            >
+              <div className="flex items-center gap-2 font-medium">
+                {collapsible && <span className="text-xs text-[var(--muted)]">{open ? "▾" : "▸"}</span>}
+                <span>{doc.source_file}</span>
+                {collapsible && doc.chunks.length > 0 && (
+                  <span className="text-xs font-normal text-[var(--muted)]">· {doc.chunks.length} chunks</span>
+                )}
+              </div>
+              <StatusBadge status={doc.status} hasChunks={doc.chunks.length > 0} />
+            </div>
+
+            {isProcessing(doc) && (
+              <p className="mt-2 text-xs text-[var(--muted)]">
+                ✓ Uploaded — now extracting &amp; chunking in the background. This updates automatically.
+              </p>
+            )}
+
+            {open && doc.chunks.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {doc.chunks.map((c) => (
+                  <div key={c.id} className="rounded-2xl bg-black/20 p-3 text-sm">
+                    {c.heading && <div className="mb-1 font-semibold text-[var(--brand2)]">{c.heading}</div>}
+                    <p className="text-[var(--text)]/85">{c.text}</p>
+                    <div className="mt-1 text-xs text-[var(--muted)]">📖 {c.citation}</div>
+                    {doc.status === "approved" && <ChunkQuestions chunk={c} onChanged={refresh} />}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {doc.status === "pending" && doc.chunks.length > 0 && (
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => review(doc.id, true)}
+                  className="rounded-lg bg-[var(--good)] px-3 py-1.5 text-xs font-medium text-black"
+                >
+                  ✓ Approve
+                </button>
+                <button
+                  onClick={() => review(doc.id, false)}
+                  className="rounded-lg bg-[var(--bad)] px-3 py-1.5 text-xs font-medium text-white"
+                >
+                  ✗ Reject
+                </button>
+              </div>
+            )}
           </div>
-
-          {isProcessing(doc) && (
-            <p className="mt-2 text-xs text-[var(--muted)]">Extracting and chunking — this updates automatically.</p>
-          )}
-
-          {doc.chunks.length > 0 && (
-            <div className="mt-3 space-y-2">
-              {doc.chunks.map((c) => (
-                <div key={c.id} className="rounded-2xl bg-black/20 p-3 text-sm">
-                  {c.heading && <div className="mb-1 font-semibold text-[var(--brand2)]">{c.heading}</div>}
-                  <p className="text-[var(--text)]/85">{c.text}</p>
-                  <div className="mt-1 text-xs text-[var(--muted)]">📖 {c.citation}</div>
-                  {doc.status === "approved" && <ChunkQuestions chunk={c} onChanged={refresh} />}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {doc.status === "pending" && doc.chunks.length > 0 && (
-            <div className="mt-3 flex gap-2">
-              <button
-                onClick={() => review(doc.id, true)}
-                className="rounded-lg bg-[var(--good)] px-3 py-1.5 text-xs font-medium text-black"
-              >
-                ✓ Approve
-              </button>
-              <button
-                onClick={() => review(doc.id, false)}
-                className="rounded-lg bg-[var(--bad)] px-3 py-1.5 text-xs font-medium text-white"
-              >
-                ✗ Reject
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
