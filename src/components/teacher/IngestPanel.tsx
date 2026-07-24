@@ -18,18 +18,38 @@ import ChunkQuestions from "./ChunkQuestions";
 // the signed URL, multipart body with `cacheControl` and the file under the
 // empty-string key (see node_modules/@supabase/storage-js/src/packages/
 // StorageFileApi.ts).
-async function putToSignedUrl(signedUrl: string, file: File): Promise<string | null> {
-  const body = new FormData();
-  body.append("cacheControl", "3600");
-  body.append("", file);
-  try {
-    const res = await fetch(signedUrl, { method: "PUT", body });
-    if (res.ok) return null;
-    const text = await res.text().catch(() => "");
-    return text || `upload failed (${res.status})`;
-  } catch (err) {
-    return err instanceof Error ? err.message : "upload failed";
-  }
+// Uses XMLHttpRequest rather than fetch for one reason: fetch cannot report
+// upload progress. A multi-megabyte slide deck on a normal connection takes
+// real seconds to send, and without a percentage that's indistinguishable
+// from a hang — the transfer is genuinely bandwidth-bound, so the honest fix
+// is to make it legible, not to pretend it's instant.
+function putToSignedUrl(
+  signedUrl: string,
+  file: File,
+  onProgress: (bytesSent: number) => void,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const body = new FormData();
+    body.append("cacheControl", "3600");
+    body.append("", file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", signedUrl);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(file.size);
+        resolve(null);
+      } else {
+        resolve(xhr.responseText || `upload failed (${xhr.status})`);
+      }
+    };
+    xhr.onerror = () => resolve("upload failed");
+    xhr.onabort = () => resolve("upload cancelled");
+    xhr.send(body);
+  });
 }
 
 type Doc = TeacherDocument;
@@ -264,13 +284,35 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
     return () => clearTimeout(timer);
   }, [notice]);
 
+  // Poll fast at first, then back off. A PPTX no longer makes an AI call at
+  // all, so its chunks usually land within a second or two — but a flat 3.5s
+  // interval meant the teacher still watched "Processing…" for up to 3.5s
+  // after the work had already finished. That polling gap, not the work, was
+  // most of the remaining wait. Longer documents (DOCX/PDF, which still use
+  // the model) fall through to the slower interval rather than hammering the
+  // endpoint for a minute.
   const anyProcessing = documents.some(isProcessing);
   useEffect(() => {
     if (!anyProcessing) return;
-    const timer = setInterval(() => {
-      void refresh();
-    }, 3500);
-    return () => clearInterval(timer);
+    let cancelled = false;
+    let attempt = 0;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const schedule = () => {
+      const delay = attempt < 10 ? 700 : 3500;
+      timer = setTimeout(async () => {
+        if (cancelled) return;
+        attempt += 1;
+        await refresh();
+        if (!cancelled) schedule();
+      }, delay);
+    };
+    schedule();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [anyProcessing, refresh]);
 
   // Two-step, direct-to-storage upload: file bytes never pass through our
@@ -341,24 +383,34 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
       // one document per file in the order received, and names aren't unique
       // if the same file is picked twice). A slow deck no longer blocks the
       // others, so a 3-file upload takes about as long as its largest file.
-      let done = 0;
+      //
+      // Progress is reported as a real percentage of bytes sent across the
+      // whole batch, since the transfer is bandwidth-bound and a spinner alone
+      // reads as a hang on a multi-megabyte deck.
+      const totalBytes = fileList.reduce((n, f) => n + f.size, 0) || 1;
+      const sentByFile = new Map<number, number>();
+      const reportProgress = () => {
+        let sent = 0;
+        for (const n of sentByFile.values()) sent += n;
+        setUploadProgress(`${Math.min(99, Math.round((sent / totalBytes) * 100))}%`);
+      };
+
       const results = await Promise.all(
         targets.map(async (target, i): Promise<string | null> => {
           const file = fileList[i];
           if (!file) return `"${target.name}": file missing`;
 
-          const uploadErr = await putToSignedUrl(target.signedUrl, file);
-          if (uploadErr) {
-            setUploadProgress(`${(done += 1)}/${targets.length}`);
-            return `"${target.name}": ${uploadErr}`;
-          }
+          const uploadErr = await putToSignedUrl(target.signedUrl, file, (bytesSent) => {
+            sentByFile.set(i, bytesSent);
+            reportProgress();
+          });
+          if (uploadErr) return `"${target.name}": ${uploadErr}`;
 
           const completeRes = await fetch("/api/ingest/upload-complete", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ documentId: target.documentId, storagePath: target.path }),
           });
-          setUploadProgress(`${(done += 1)}/${targets.length}`);
           if (!completeRes.ok) {
             const { data: completeData } = await safeJson(completeRes);
             return `"${target.name}": ${(completeData.error as string | undefined) || "failed to start processing"}`;
@@ -503,7 +555,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
             uploading ? "cursor-not-allowed opacity-60" : "hover:-translate-y-0.5"
           }`}
         >
-          {uploading ? (uploadProgress ? `Uploading ${uploadProgress}…` : "Uploading…") : "Upload"}
+          {uploading ? (uploadProgress ? `Uploading ${uploadProgress}` : "Uploading…") : "Upload"}
         </button>
       </form>
       <p className="text-xs text-[var(--muted)]">
@@ -555,7 +607,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           <div className="flex items-center justify-between">
             <div className="font-medium">{name}</div>
             <span className="rounded-full bg-[rgba(99,102,241,0.16)] px-2 py-0.5 text-xs text-[var(--brand2)]">
-              Uploading…
+              {uploadProgress ? `Uploading ${uploadProgress}` : "Uploading…"}
             </span>
           </div>
           <p className="mt-2 text-xs text-[var(--muted)]">Sending securely — please keep this tab open.</p>
