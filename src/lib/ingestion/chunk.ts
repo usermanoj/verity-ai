@@ -30,6 +30,18 @@ const SYSTEM_PROMPT =
 // pages, and each carries its own source page number).
 const PAGES_PER_BATCH = 8;
 
+// Whether a format needs a model call to find chunk boundaries.
+//
+// PPTX doesn't: a slide is authored as a discrete topic with its own title,
+// so extraction alone produces the chunks. That makes it fast enough to run
+// inline in the request instead of on a durable workflow — which matters,
+// because workflow dispatch was measured at 8–11s for work taking under a
+// second. Prose formats (DOCX/TXT = one block; PDF = layout pages that don't
+// map to concepts) genuinely need the model, so they stay async.
+export function needsModelChunking(ext: string): boolean {
+  return ext.toLowerCase() !== "pptx";
+}
+
 // AI-assisted, not AI-decided: the model splits and lightly cleans text it
 // is given, it never generates new claims — the same "closed-corpus"
 // discipline as the tutor itself, applied to ingestion.
