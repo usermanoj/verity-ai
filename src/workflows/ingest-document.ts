@@ -4,46 +4,48 @@ import { downloadCorpusFile } from "@/lib/supabase/storage";
 import { extractDocument, isSupportedExtension } from "@/lib/ingestion/extract";
 import { chunkExtractedText } from "@/lib/ingestion/chunk";
 
-async function loadDocument(documentId: string) {
+// Load, extract, chunk and save as ONE durable step rather than four.
+//
+// Every "use step" is a checkpoint: the engine persists state and re-invokes
+// between them, so four steps meant four orchestration round trips before a
+// teacher saw any chunks. For a .pptx that cost dominated the wait entirely —
+// slides now skip the model, so the real work here (download, unzip, insert)
+// is well under a second.
+//
+// The trade-off is retry granularity: a failure re-runs the whole step
+// instead of resuming mid-way. That's the right trade for work this short,
+// and it also avoids the half-finished states the split version could leave
+// (extracted but not saved).
+async function extractAndSaveChunks(documentId: string, storagePath: string) {
   "use step";
-  const { data, error } = await supabaseAdmin()
+  const admin = supabaseAdmin();
+
+  const { data: doc, error: docError } = await admin
     .from("corpus_documents")
     .select("id, source_file")
     .eq("id", documentId)
     .single();
-  if (error || !data) throw new FatalError(`Document ${documentId} not found`);
-  return data;
-}
+  if (docError || !doc) throw new FatalError(`Document ${documentId} not found`);
 
-async function extractStep(sourceFile: string, storagePath: string) {
-  "use step";
-  const ext = sourceFile.split(".").pop()?.toLowerCase() ?? "";
+  const ext = doc.source_file.split(".").pop()?.toLowerCase() ?? "";
   if (!isSupportedExtension(ext)) {
     throw new FatalError(`Unsupported file type: .${ext} (only .docx, .pdf, .pptx and .txt are supported today)`);
   }
+
   const buffer = await downloadCorpusFile(storagePath);
-  return extractDocument(buffer, ext);
-}
+  const extracted = await extractDocument(buffer, ext);
+  const chunks = await chunkExtractedText(doc.source_file, extracted.pages);
 
-async function chunkStep(sourceFile: string, pages: { pageOrSection: number; text: string }[]) {
-  "use step";
-  return chunkExtractedText(sourceFile, pages);
-}
-
-async function savePendingChunks(
-  documentId: string,
-  sourceFile: string,
-  chunks: { heading: string; text: string; pageOrSection: number }[],
-) {
-  "use step";
   const rows = chunks.map((c) => ({
     document_id: documentId,
     heading: c.heading,
     text: c.text,
-    citation: `${sourceFile} — Page/Section ${c.pageOrSection}`,
+    citation: `${doc.source_file} — Page/Section ${c.pageOrSection}`,
   }));
-  const { error } = await supabaseAdmin().from("corpus_chunks").insert(rows);
+  const { error } = await admin.from("corpus_chunks").insert(rows);
   if (error) throw error;
+
+  return { chunkCount: rows.length };
 }
 
 async function finalizeDocument(documentId: string, approved: boolean, reviewerId: string) {
@@ -71,10 +73,7 @@ async function finalizeDocument(documentId: string, approved: boolean, reviewerI
 export async function ingestDocumentWorkflow(documentId: string, storagePath: string) {
   "use workflow";
 
-  const doc = await loadDocument(documentId);
-  const extracted = await extractStep(doc.source_file, storagePath);
-  const chunks = await chunkStep(doc.source_file, extracted.pages);
-  await savePendingChunks(documentId, doc.source_file, chunks);
+  await extractAndSaveChunks(documentId, storagePath);
 
   // Suspends here — costs nothing while waiting — until the teacher
   // approves or rejects via POST /api/ingest/review.
