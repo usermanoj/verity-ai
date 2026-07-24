@@ -278,6 +278,15 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      // Single-round-trip state for /teacher/ingest — returns the caller's
+      // user row (for the role gate) plus their document list. Identity comes
+      // from auth.uid() inside the function, so there's no user-id argument
+      // to spoof. See supabase/migrations/0006_teacher_ingest_state.sql.
+      teacher_ingest_state: {
+        Args: { p_limit?: number };
+        Returns: unknown;
+      };
+    };
   };
 };

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseServer } from "@/lib/supabase/server";
 
 export type GeneratedQuestionRow = {
   id: string;
@@ -60,90 +61,33 @@ export type TeacherDocument = {
 // rendered on one page.
 const MAX_DOCUMENTS = 30;
 
-export async function listTeacherDocuments(teacherId: string): Promise<TeacherDocument[]> {
-  const admin = supabaseAdmin();
-  const { data: docs, error: docsError } = await admin
-    .from("corpus_documents")
-    .select("id, source_file, status, created_at")
-    .eq("uploaded_by", teacherId)
-    .order("created_at", { ascending: false })
-    .limit(MAX_DOCUMENTS);
-  // A query error must never be silently treated as "no documents" — that's
-  // exactly what hid a previous bug behind a confusing "No uploads yet."
-  if (docsError) throw docsError;
-  if (!docs || docs.length === 0) return [];
+export type TeacherIngestState = {
+  user: { id: string; role: string; school_id: string; display_name: string | null } | null;
+  documents: TeacherDocument[];
+};
 
-  const docIds = docs.map((d) => d.id);
+// Everything /teacher/ingest needs, in ONE database round trip.
+//
+// The previous path cost up to five sequential hops: the users row for the
+// role gate, then the document list, chunk counts, the chunk text for the
+// deck under review, and its questions. Individually small; it's the
+// serialisation that hurt (~577ms warm in production). The RPC assembles the
+// same JSON server-side in a single call.
+//
+// Uses the user-scoped client, not the service-role one: the function reads
+// auth.uid() internally, so identity comes from the caller's verified JWT and
+// there is no user-id argument to spoof. That also means the role gate no
+// longer needs its own query — the caller's role comes back in the same
+// response. See supabase/migrations/0006_teacher_ingest_state.sql.
+export async function getTeacherIngestState(limit = MAX_DOCUMENTS): Promise<TeacherIngestState> {
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.rpc("teacher_ingest_state", { p_limit: limit });
+  if (error) throw error;
 
-  // Counts for every document, but *ids only* — no text. This is what the
-  // collapsed cards need, and it stays tiny no matter how much history has
-  // built up.
-  const { data: chunkIdRows, error: countError } = await admin
-    .from("corpus_chunks")
-    .select("id, document_id")
-    .in("document_id", docIds);
-  if (countError) throw countError;
-
-  const countByDocument = new Map<string, number>();
-  for (const row of chunkIdRows ?? []) {
-    countByDocument.set(row.document_id, (countByDocument.get(row.document_id) ?? 0) + 1);
-  }
-
-  // Full chunk text ONLY for documents the UI renders expanded — i.e. those
-  // still pending review. Approved/rejected documents render collapsed, so
-  // pulling their text here was pure waste: it dominated the payload and the
-  // query time while never being displayed. Their text loads on expand via
-  // GET /api/ingest/chunks instead.
-  // Only the ONE deck currently being reviewed — not every pending deck.
-  // Reviewing is sequential (you approve one deck at a time), and a teacher
-  // mid-testing can easily have dozens of decks sitting at 'pending': the
-  // earlier "all pending documents" version therefore pulled ~350 chunks of
-  // full slide text on every load *and* every 3.5s poll, and React rendered
-  // all 350 chunk cards into the DOM. Everything else loads on expand.
-  const firstReadyForReview = docs.find(
-    (d) => d.status === "pending" && (countByDocument.get(d.id) ?? 0) > 0,
-  );
-  const expandedDocIds = firstReadyForReview ? [firstReadyForReview.id] : [];
-  const { data: chunks, error: chunksError } = expandedDocIds.length
-    ? await admin
-        .from("corpus_chunks")
-        .select("id, document_id, heading, text, citation")
-        .in("document_id", expandedDocIds)
-    : { data: [], error: null };
-  if (chunksError) throw chunksError;
-
-  const chunkIds = (chunks ?? []).map((c) => c.id);
-  const { data: questions, error: questionsError } = chunkIds.length
-    ? await admin
-        .from("generated_questions")
-        .select("id, chunk_id, level, prompt, question, status")
-        .in("chunk_id", chunkIds)
-        .neq("status", "rejected")
-    : { data: [], error: null };
-  if (questionsError) throw questionsError;
-
-  const questionsByChunk = new Map<string, GeneratedQuestionRow[]>();
-  for (const q of questions ?? []) {
-    const { chunk_id, ...rest } = q;
-    const list = questionsByChunk.get(chunk_id) ?? [];
-    list.push(rest);
-    questionsByChunk.set(chunk_id, list);
-  }
-
-  const chunksByDocument = new Map<string, TeacherChunk[]>();
-  for (const c of chunks ?? []) {
-    const { document_id, ...rest } = c;
-    const list = chunksByDocument.get(document_id) ?? [];
-    list.push({ ...rest, questions: questionsByChunk.get(c.id) ?? [] });
-    chunksByDocument.set(document_id, list);
-  }
-
-  return docs.map((doc) => ({
-    ...doc,
-    chunkCount: countByDocument.get(doc.id) ?? 0,
-    chunks: chunksByDocument.get(doc.id) ?? [],
-  }));
+  const state = (data ?? {}) as Partial<TeacherIngestState>;
+  return { user: state.user ?? null, documents: state.documents ?? [] };
 }
+
 
 // On-demand chunk loading for a single document — used when a teacher
 // expands an approved/rejected deck whose text the list deliberately didn't
