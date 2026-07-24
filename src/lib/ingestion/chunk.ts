@@ -64,14 +64,17 @@ export async function chunkExtractedText(sourceFileName: string, pages: Extracte
   return results.flat().sort((a, b) => a.pageOrSection - b.pageOrSection);
 }
 
-// A slide's heading is its title — reliably the first non-empty line, since
-// that's where slide layouts put it. Capped so a title-less slide (whose
-// first line is body text) still yields a sane label.
+// A slide's heading is its title — the first meaningful line, since that's
+// where slide layouts put it. Purely numeric lines are skipped: slide-number
+// placeholders are stripped during extraction, but page numbers and stray
+// figures can still lead a slide, and a heading reading "2" is useless.
+// Capped so a title-less slide (whose first line is body text) still yields
+// a sane label.
 function deriveHeading(slideText: string): string {
   const firstLine = slideText
     .split("\n")
     .map((l) => l.trim())
-    .find(Boolean);
+    .find((l) => l.length > 0 && !/^\d+$/.test(l));
   if (!firstLine) return "Slide";
   return firstLine.length > 80 ? `${firstLine.slice(0, 79)}…` : firstLine;
 }

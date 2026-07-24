@@ -269,6 +269,15 @@ export default function IngestPanel() {
   // every documents change and simply doesn't re-arm), so it never polls
   // idly. setState happens only inside the async interval callback (via
   // refresh), never synchronously in the effect body.
+  // Auto-dismiss the status toast. A confirmation that stays on screen
+  // forever stops being information and becomes clutter — it lingered over
+  // the header long after the upload it described had finished.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
   const anyProcessing = documents.some(isProcessing);
   useEffect(() => {
     if (!anyProcessing) return;

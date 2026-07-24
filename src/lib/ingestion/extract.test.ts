@@ -59,6 +59,22 @@ describe("extractDocument — pptx", () => {
     expect(pages.map((p) => p.text)).toEqual(["one", "two", "ten"]);
   });
 
+  it("drops slide-number placeholders so they can't pollute text or headings", async () => {
+    // PowerPoint stores the slide number as <a:fld type="slidenum"> holding a
+    // normal <a:t> run. Collecting it made chunk headings read "2"/"3" and
+    // prefixed the body text with the number.
+    const xml =
+      `<p:sld><p:cSld><p:spTree><p:sp><p:txBody>` +
+      `<a:p><a:fld id="{X}" type="slidenum"><a:t>2</a:t></a:fld></a:p>` +
+      `<a:p><a:r><a:t>Definition of a moment</a:t></a:r></a:p>` +
+      `<a:p><a:r><a:t>The turning effect of a force.</a:t></a:r></a:p>` +
+      `</p:txBody></p:sp></p:spTree></p:cSld></p:sld>`;
+    const { pages } = await extractDocument(pptxBuffer({ "ppt/slides/slide1.xml": xml }), "pptx");
+    expect(pages).toHaveLength(1);
+    expect(pages[0].text).toBe("Definition of a moment\nThe turning effect of a force.");
+    expect(pages[0].text).not.toMatch(/^2/);
+  });
+
   it("skips text-less slides and decodes XML entities", async () => {
     const buf = pptxBuffer({
       "ppt/slides/slide1.xml": slideXml([]), // image-only / empty slide

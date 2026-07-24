@@ -65,8 +65,16 @@ function slideNumber(name: string): number {
 // Slide text lives in <a:t>…</a:t> runs, grouped into <a:p> paragraphs.
 // Join runs within a paragraph, paragraphs onto their own lines.
 function pptSlideText(xml: string): string {
+  // Strip slide-number placeholders first. PowerPoint stores them as
+  // <a:fld type="slidenum"> containing an ordinary <a:t> run, so they were
+  // being collected as slide content — polluting the text ("2 The turning
+  // effect of a force is called a moment…") and, when the placeholder sat at
+  // the top of the layout, becoming the chunk's heading (headings literally
+  // read "2" and "3" instead of the slide title).
+  const body = xml.replace(/<a:fld\b[^>]*\btype="slidenum"[^>]*>[\s\S]*?<\/a:fld>/g, "");
+
   const lines: string[] = [];
-  for (const para of xml.split("</a:p>")) {
+  for (const para of body.split("</a:p>")) {
     const runs = [...para.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((m) => decodeXmlEntities(m[1]));
     const line = runs.join("").trim();
     if (line) lines.push(line);
