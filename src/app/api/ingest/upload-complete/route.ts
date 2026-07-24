@@ -3,6 +3,8 @@ import { start } from "workflow/api";
 import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { needsModelChunking } from "@/lib/ingestion/chunk";
+import { extractAndSaveChunks } from "@/lib/ingestion/process";
 import { ingestDocumentWorkflow } from "@/workflows/ingest-document";
 
 export const runtime = "nodejs";
@@ -35,7 +37,7 @@ export async function POST(req: NextRequest) {
   // any processing on it — documentId is client-supplied.
   const { data: doc } = await supabaseAdmin()
     .from("corpus_documents")
-    .select("uploaded_by, status")
+    .select("uploaded_by, status, source_file")
     .eq("id", documentId)
     .maybeSingle();
   if (!doc || doc.uploaded_by !== user.id) {
@@ -45,6 +47,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Document already processed." }, { status: 409 });
   }
 
+  const ext = doc.source_file.split(".").pop()?.toLowerCase() ?? "";
+
+  // Formats that need no model call are processed INLINE, right here.
+  //
+  // They were previously handed to the durable workflow like everything
+  // else, and that dispatch was measured at 8–11 seconds for a slide deck
+  // whose real work (download, unzip, insert) takes under a second — the
+  // engine, not the work, was the wait. Durability buys nothing for an
+  // operation this short, so the request just does it and returns "ready".
+  if (!needsModelChunking(ext)) {
+    try {
+      const chunkCount = await extractAndSaveChunks(documentId, storagePath);
+      return NextResponse.json({ documentId, status: "ready", chunkCount });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Failed to process document." },
+        { status: 500 },
+      );
+    }
+  }
+
+  // Model-chunked formats (DOCX/PDF/TXT) can take tens of seconds, which is
+  // far too long to hold a request open — those stay on the workflow.
   await start(ingestDocumentWorkflow, [documentId, storagePath]);
 
   return NextResponse.json({ documentId, status: "processing" });
