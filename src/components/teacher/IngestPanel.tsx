@@ -95,11 +95,11 @@ function formatDiagnostics(timings: ListTimings | undefined, roundTripMs: number
 // form included — waited on an auth lookup plus three queries pulling every
 // chunk's full text before any HTML was sent. The form needs none of that,
 // so loading it here lets the page paint immediately and the list fill in.
-export default function IngestPanel() {
-  const [documents, setDocuments] = useState<Doc[]>([]);
-  // Distinguishes "still loading the first time" from "genuinely no uploads",
-  // so the empty state never flashes before the data arrives.
-  const [loadedOnce, setLoadedOnce] = useState(false);
+export default function IngestPanel({ initialDocuments }: { initialDocuments: Doc[] }) {
+  // Seeded from the server-rendered page, so the list is on screen with the
+  // first paint — no mount fetch, no skeleton, no waterfall. refresh() still
+  // drives polling, manual refresh, and post-action updates.
+  const [documents, setDocuments] = useState<Doc[]>(initialDocuments);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
@@ -164,47 +164,33 @@ export default function IngestPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't load your uploads.");
     } finally {
-      setLoadedOnce(true);
       setLoading(false);
     }
   }, []);
 
-  // Initial load. Written inline rather than calling refresh() because
-  // refresh() flips its loading flag *synchronously* — a setState in the
-  // effect body, which react-hooks/set-state-in-effect (correctly) rejects.
-  // Here every state update happens after an await, and a cancelled flag
-  // stops a late response from writing into an unmounted component.
+  // No mount fetch: the list arrives with the server-rendered HTML. This
+  // effect only records how long the page itself took, which is the number
+  // the API timing can't see.
+  //
+  // TTFB now includes the single RPC (auth + documents together), and the
+  // content is already painted at that point — previously TTFB was 4ms but
+  // nothing was visible until the bundle had downloaded, hydrated, and then
+  // fetched the list, ~5.5s in.
+  //
+  // setState happens after an await so it isn't synchronous in the effect
+  // body (react-hooks/set-state-in-effect).
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      try {
-        const startedAt = performance.now();
-        const res = await fetch("/api/ingest/documents", { cache: "no-store" });
-        const { data, bytes } = await safeJson(res);
-        if (cancelled) return;
-
-        // One-time page-load breakdown from the browser's Navigation Timing
-        // API: TTFB is the server render (auth-gated) before any HTML
-        // shipped; interactive is when the DOM was ready (bundle downloaded +
-        // parsed). This is the part the API timing can't see — the actual
-        // "load the page" cost. Read after the await so the setState isn't
-        // synchronous in the effect body (react-hooks/set-state-in-effect).
-        const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
-        if (nav && nav.responseStart > 0) {
-          const ttfb = Math.round(nav.responseStart - nav.requestStart);
-          const ready = Math.round(nav.domContentLoadedEventEnd || nav.domInteractive);
-          setPageDiag(`page: TTFB ${ttfb}ms (server render) · interactive ${ready}ms (bundle)`);
-        }
-
-        setDiag(
-          formatDiagnostics(data.timings as ListTimings | undefined, Math.round(performance.now() - startedAt), bytes),
+      await Promise.resolve();
+      if (cancelled) return;
+      const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      if (nav && nav.responseStart > 0) {
+        const ttfb = Math.round(nav.responseStart - nav.requestStart);
+        const ready = Math.round(nav.domContentLoadedEventEnd || nav.domInteractive);
+        setPageDiag(
+          `page: TTFB ${ttfb}ms (server render, list included) · interactive ${ready}ms (bundle)`,
         );
-        if (!res.ok) setError((data.error as string | undefined) || "Couldn't load your uploads.");
-        else setDocuments((data.documents as Doc[] | undefined) ?? []);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Couldn't load your uploads.");
-      } finally {
-        if (!cancelled) setLoadedOnce(true);
       }
     })();
     return () => {
@@ -576,14 +562,9 @@ export default function IngestPanel() {
         </div>
       ))}
 
-      {!loadedOnce && pendingNames.length === 0 && (
-        <div className="space-y-4">
-          <div className="glass h-20 animate-pulse rounded-3xl" />
-          <div className="glass h-20 animate-pulse rounded-3xl" />
-        </div>
-      )}
-
-      {loadedOnce && documents.length === 0 && pendingNames.length === 0 && (
+      {/* No loading skeleton: the list is server-rendered, so it's on screen
+          with the first paint rather than after a fetch. */}
+      {documents.length === 0 && pendingNames.length === 0 && (
         <p className="text-sm text-[var(--muted)]">No uploads yet.</p>
       )}
 
