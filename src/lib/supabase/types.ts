@@ -287,6 +287,20 @@ export type Database = {
         Args: { p_limit?: number };
         Returns: unknown;
       };
+      // Single-round-trip upload authorisation — role gate, course/section
+      // get-or-create, and the document + mapping inserts. Identity comes
+      // from auth.uid() inside the function, so there's no user-id argument
+      // to spoof. See supabase/migrations/0007_teacher_upload_init.sql.
+      teacher_upload_init: {
+        Args: {
+          p_subject: string;
+          p_grade: string;
+          p_academic_year: string;
+          p_sections: string[];
+          p_files: string[];
+        };
+        Returns: unknown;
+      };
     };
   };
 };

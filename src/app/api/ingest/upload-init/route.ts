@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseServer } from "@/lib/supabase/server";
 import { createSignedUploadUrl } from "@/lib/supabase/storage";
-import { resolveTeacherSections } from "@/lib/ingestion/class";
 import { currentAcademicYear, parseSections } from "@/lib/ingestion/academic-year";
 import { isSupportedExtension } from "@/lib/ingestion/extract";
 
@@ -17,19 +15,19 @@ const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 type FileMeta = { name: string; size: number };
 
-// Step 1 of 2 for a direct-to-storage upload: validate the request and the
-// teacher's sections, create the corpus_documents/corpus_document_sections
-// rows, and mint one signed upload URL per file. No file bytes are received
-// here — the client uploads directly to Supabase Storage next, then calls
-// POST /api/ingest/upload-complete once each upload succeeds.
+// Step 1 of 2 for a direct-to-storage upload: authorise the teacher, create
+// the document rows, and mint one signed upload URL per file. No file bytes
+// are received here — the browser uploads straight to Supabase Storage next,
+// then calls POST /api/ingest/upload-complete.
+//
+// All the database work is ONE call (teacher_upload_init, migration 0007).
+// It previously took ~7 sequential round trips — the users row for the role
+// gate, get-or-create the course, get-or-create each section, insert the
+// documents, insert the section mappings — measured live at 2272ms of a
+// 6680ms upload, all of it before the browser could send a single byte.
 export async function POST(req: NextRequest) {
   if (!hasSupabase()) {
     return NextResponse.json({ error: "Ingestion isn't configured for this deployment yet." }, { status: 503 });
-  }
-
-  const user = await getCurrentAppUser();
-  if (!user || user.role !== "teacher") {
-    return NextResponse.json({ error: "Only signed-in teachers can upload." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as {
@@ -73,38 +71,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Enter at least one section (e.g. 7A, or 7A, 7B)." }, { status: 400 });
   }
 
-  // Sections are resolved once — every file in this upload applies to the
-  // same set of the teacher's sections.
-  const resolved = await resolveTeacherSections(user.id, user.schoolId, subject, grade, academicYear, sectionNames);
-  if (!resolved.ok) {
-    return NextResponse.json({ error: resolved.error }, { status: 409 });
-  }
-
-  const admin = supabaseAdmin();
-
-  // Batched, not one-file-at-a-time. This loop previously ran THREE
-  // sequential awaits per file (insert document → insert section mappings →
-  // mint signed URL), so a three-file upload paid nine serial round trips
-  // before the browser could start sending a single byte. It's now two
-  // round trips plus N parallel URL mints, regardless of file count.
-  const { data: docs, error: insertError } = await admin
-    .from("corpus_documents")
-    .insert(files.map((f) => ({ uploaded_by: user.id, source_file: f.name, status: "pending" })))
-    .select("id");
-  // Rows come back in insertion order, which is what lets us zip by index
-  // below — names can't be used as keys since a teacher may pick the same
-  // file twice. The length check makes a violated assumption loud, not silent.
-  if (insertError || !docs || docs.length !== files.length) {
+  // User-scoped client: the function reads auth.uid() itself, so identity
+  // comes from the caller's verified JWT and the role gate needs no separate
+  // query of its own.
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.rpc("teacher_upload_init", {
+    p_subject: subject,
+    p_grade: grade,
+    p_academic_year: academicYear,
+    p_sections: sectionNames,
+    p_files: files.map((f) => f.name),
+  });
+  if (error) {
     return NextResponse.json({ error: "Failed to create document records." }, { status: 500 });
   }
 
-  const { error: mapError } = await admin
-    .from("corpus_document_sections")
-    .insert(docs.flatMap((doc) => resolved.classIds.map((classId) => ({ document_id: doc.id, class_id: classId }))));
-  if (mapError) {
-    return NextResponse.json({ error: "Failed to attach documents to sections." }, { status: 500 });
+  const result = (data ?? {}) as { error?: string; documents?: { id: string; name: string }[] };
+  if (result.error) {
+    // "Not signed in" / wrong role are authorisation failures; a section owned
+    // by another teacher is a conflict.
+    const status = result.error.includes("managed by another teacher") ? 409 : 403;
+    return NextResponse.json({ error: result.error }, { status });
   }
 
+  const docs = result.documents ?? [];
+  if (docs.length !== files.length) {
+    return NextResponse.json({ error: "Failed to create document records." }, { status: 500 });
+  }
+
+  // Signed URLs are Storage API calls, not database ones, so they can't join
+  // the RPC — but they're independent of each other and run in parallel.
   const results = await Promise.all(
     docs.map(async (doc, i) => {
       const file = files[i];
