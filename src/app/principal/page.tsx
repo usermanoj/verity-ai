@@ -2,6 +2,12 @@ import Link from "next/link";
 import PrincipalDashboard from "@/components/principal/PrincipalDashboard";
 import { requireRole } from "@/lib/auth";
 
+// Auth-gated: never prerender. The auth helpers read cookies at request
+// time, but bail out early when Supabase env vars are absent — so a build
+// without them (preview branches, where those vars are deliberately not set)
+// would otherwise prerender this as a STATIC, auth-skipped snapshot.
+export const dynamic = "force-dynamic";
+
 export default async function PrincipalPage() {
   await requireRole("principal", "/principal");
   return (
