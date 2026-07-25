@@ -3,6 +3,12 @@ import TeacherDashboard from "@/components/teacher/TeacherDashboard";
 import { CLASS } from "@/data/monitoring";
 import { requireRole } from "@/lib/auth";
 
+// Auth-gated: never prerender. The auth helpers read cookies at request
+// time, but bail out early when Supabase env vars are absent — so a build
+// without them (preview branches, where those vars are deliberately not set)
+// would otherwise prerender this as a STATIC, auth-skipped snapshot.
+export const dynamic = "force-dynamic";
+
 export default async function TeacherPage() {
   await requireRole("teacher", "/teacher");
   return (

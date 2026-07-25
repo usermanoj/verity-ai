@@ -4,6 +4,12 @@ import { hasSupabase } from "@/lib/supabase/config";
 import { getTeacherIngestState } from "@/lib/ingestion/documents";
 import IngestPanel from "@/components/teacher/IngestPanel";
 
+// Auth-gated: never prerender. The auth helpers read cookies at request
+// time, but bail out early when Supabase env vars are absent — so a build
+// without them (preview branches, where those vars are deliberately not set)
+// would otherwise prerender this as a STATIC, auth-skipped snapshot.
+export const dynamic = "force-dynamic";
+
 export default async function TeacherIngestPage() {
   // ONE round trip for the whole page: the RPC returns the caller's role
   // (the auth gate) *and* their documents together, so the uploads list is
