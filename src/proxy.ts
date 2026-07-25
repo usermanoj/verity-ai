@@ -92,9 +92,16 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
+  // `(?!$)` excludes the marketing homepage ("/") exactly. It's a public
+  // page that reads no auth, so the two things this proxy does — rate-
+  // limiting the AI endpoints and refreshing the Supabase session — buy it
+  // nothing, while every visit paid for a middleware invocation ahead of the
+  // render. A signed-in user's session simply refreshes on their next
+  // authenticated page instead. Deeper routes still match.
+  //
   // .well-known/workflow/ MUST stay excluded — Workflow SDK's internal
   // resumption requests break if the proxy intercepts them (see
   // node_modules/workflow/docs/getting-started/next.mdx's troubleshooting
   // section for the exact failure mode).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.well-known/workflow/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: ["/((?!$|_next/static|_next/image|favicon.ico|.well-known/workflow/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

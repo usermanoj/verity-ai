@@ -81,29 +81,37 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = supabaseAdmin();
-  const results: { name: string; documentId: string; path: string; signedUrl: string }[] = [];
 
-  for (const file of files) {
-    const { data: doc, error } = await admin
-      .from("corpus_documents")
-      .insert({ uploaded_by: user.id, source_file: file.name, status: "pending" })
-      .select("id")
-      .single();
-    if (error || !doc) {
-      return NextResponse.json({ error: `Failed to create record for "${file.name}".` }, { status: 500 });
-    }
-
-    const { error: mapError } = await admin
-      .from("corpus_document_sections")
-      .insert(resolved.classIds.map((classId) => ({ document_id: doc.id, class_id: classId })));
-    if (mapError) {
-      return NextResponse.json({ error: `Failed to attach "${file.name}" to sections.` }, { status: 500 });
-    }
-
-    const storagePath = `${doc.id}/${file.name}`;
-    const { path, signedUrl } = await createSignedUploadUrl(storagePath);
-    results.push({ name: file.name, documentId: doc.id, path, signedUrl });
+  // Batched, not one-file-at-a-time. This loop previously ran THREE
+  // sequential awaits per file (insert document → insert section mappings →
+  // mint signed URL), so a three-file upload paid nine serial round trips
+  // before the browser could start sending a single byte. It's now two
+  // round trips plus N parallel URL mints, regardless of file count.
+  const { data: docs, error: insertError } = await admin
+    .from("corpus_documents")
+    .insert(files.map((f) => ({ uploaded_by: user.id, source_file: f.name, status: "pending" })))
+    .select("id");
+  // Rows come back in insertion order, which is what lets us zip by index
+  // below — names can't be used as keys since a teacher may pick the same
+  // file twice. The length check makes a violated assumption loud, not silent.
+  if (insertError || !docs || docs.length !== files.length) {
+    return NextResponse.json({ error: "Failed to create document records." }, { status: 500 });
   }
+
+  const { error: mapError } = await admin
+    .from("corpus_document_sections")
+    .insert(docs.flatMap((doc) => resolved.classIds.map((classId) => ({ document_id: doc.id, class_id: classId }))));
+  if (mapError) {
+    return NextResponse.json({ error: "Failed to attach documents to sections." }, { status: 500 });
+  }
+
+  const results = await Promise.all(
+    docs.map(async (doc, i) => {
+      const file = files[i];
+      const { path, signedUrl } = await createSignedUploadUrl(`${doc.id}/${file.name}`);
+      return { name: file.name, documentId: doc.id, path, signedUrl };
+    }),
+  );
 
   return NextResponse.json({ files: results });
 }
