@@ -25,9 +25,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Only signed-in teachers can complete uploads." }, { status: 403 });
   }
 
-  const { documentId, storagePath } = (await req.json().catch(() => ({}))) as {
+  const { documentId, storagePath, pages } = (await req.json().catch(() => ({}))) as {
     documentId?: string;
     storagePath?: string;
+    pages?: { pageOrSection: number; text: string }[];
   };
   if (!documentId || !storagePath) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -58,7 +59,19 @@ export async function POST(req: NextRequest) {
   // operation this short, so the request just does it and returns "ready".
   if (!needsModelChunking(ext)) {
     try {
-      const chunkCount = await extractAndSaveChunks(documentId, storagePath);
+      // The browser extracts PPTX text itself (it already has the file), so
+      // the server usually doesn't need to pull the original back out of
+      // Storage. Shape-validated and bounded here; falls back to downloading
+      // and extracting server-side if absent or malformed.
+      const supplied = Array.isArray(pages)
+        ? pages
+            .filter(
+              (p) =>
+                p && typeof p.pageOrSection === "number" && typeof p.text === "string" && p.text.length < 200_000,
+            )
+            .slice(0, 2000)
+        : undefined;
+      const chunkCount = await extractAndSaveChunks(documentId, storagePath, supplied);
       return NextResponse.json({ documentId, status: "ready", chunkCount });
     } catch (err) {
       return NextResponse.json(

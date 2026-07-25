@@ -1,8 +1,8 @@
 import mammoth from "mammoth";
 import { extractText, getDocumentProxy } from "unpdf";
-import { unzipSync, strFromU8 } from "fflate";
+import { extractPptxPages, type ExtractedPage } from "./pptx";
 
-export type ExtractedPage = { pageOrSection: number; text: string };
+export type { ExtractedPage };
 export type ExtractedDocument = { pages: ExtractedPage[] };
 
 // PPTX support uses a *lightweight* path: a .pptx is a ZIP of XML, so we
@@ -29,64 +29,10 @@ export async function extractDocument(buffer: Buffer, extension: SupportedExtens
   }
 
   if (extension === "pptx") {
-    return { pages: extractPptx(buffer) };
+    return { pages: extractPptxPages(new Uint8Array(buffer)) };
   }
 
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
   const { text } = await extractText(pdf, { mergePages: false });
   return { pages: text.map((t, i) => ({ pageOrSection: i + 1, text: t })) };
-}
-
-// One page per slide, in slide order, skipping slides with no text (title
-// dividers, image-only slides). Matches the "page/section" citation model.
-function extractPptx(buffer: Buffer): ExtractedPage[] {
-  const files = unzipSync(new Uint8Array(buffer));
-  const slideNames = Object.keys(files)
-    .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
-    .sort((a, b) => slideNumber(a) - slideNumber(b));
-
-  const pages: ExtractedPage[] = [];
-  let pageNo = 0;
-  for (const name of slideNames) {
-    const text = pptSlideText(strFromU8(files[name]));
-    if (text.trim()) {
-      pageNo += 1;
-      pages.push({ pageOrSection: pageNo, text });
-    }
-  }
-  return pages;
-}
-
-function slideNumber(name: string): number {
-  const m = name.match(/slide(\d+)\.xml$/);
-  return m ? parseInt(m[1], 10) : 0;
-}
-
-// Slide text lives in <a:t>…</a:t> runs, grouped into <a:p> paragraphs.
-// Join runs within a paragraph, paragraphs onto their own lines.
-function pptSlideText(xml: string): string {
-  // Strip slide-number placeholders first. PowerPoint stores them as
-  // <a:fld type="slidenum"> containing an ordinary <a:t> run, so they were
-  // being collected as slide content — polluting the text ("2 The turning
-  // effect of a force is called a moment…") and, when the placeholder sat at
-  // the top of the layout, becoming the chunk's heading (headings literally
-  // read "2" and "3" instead of the slide title).
-  const body = xml.replace(/<a:fld\b[^>]*\btype="slidenum"[^>]*>[\s\S]*?<\/a:fld>/g, "");
-
-  const lines: string[] = [];
-  for (const para of body.split("</a:p>")) {
-    const runs = [...para.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((m) => decodeXmlEntities(m[1]));
-    const line = runs.join("").trim();
-    if (line) lines.push(line);
-  }
-  return lines.join("\n");
-}
-
-function decodeXmlEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
 }

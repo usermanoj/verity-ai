@@ -421,11 +421,30 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           transferMs = Math.max(transferMs, Math.round(performance.now() - tTransfer));
           if (uploadErr) return `"${target.name}": ${uploadErr}`;
 
+          // Extract PPTX text here rather than making the server download
+          // the file back out of Storage — the browser already has the bytes.
+          // fflate is imported lazily so it only loads for a teacher who
+          // actually uploads a slide deck, not on every page view.
+          let extractedPages: { pageOrSection: number; text: string }[] | undefined;
+          if (file.name.split(".").pop()?.toLowerCase() === "pptx") {
+            try {
+              const { extractPptxPages } = await import("@/lib/ingestion/pptx");
+              extractedPages = extractPptxPages(new Uint8Array(await file.arrayBuffer()));
+            } catch {
+              // Any parsing trouble just falls back to the server path.
+              extractedPages = undefined;
+            }
+          }
+
           const tProcess = performance.now();
           const completeRes = await fetch("/api/ingest/upload-complete", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ documentId: target.documentId, storagePath: target.path }),
+            body: JSON.stringify({
+              documentId: target.documentId,
+              storagePath: target.path,
+              pages: extractedPages,
+            }),
           });
           processMs = Math.max(processMs, Math.round(performance.now() - tProcess));
           if (!completeRes.ok) {
