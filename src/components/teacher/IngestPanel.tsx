@@ -268,6 +268,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   // only one expanded by default, and the only one whose chunk text the
   // list endpoint ships — the two must agree, so both pick the most recent
   // ready-for-review document.
+  const readyForReviewCount = sortedDocs.filter((d) => d.status === "pending" && d.chunkCount > 0).length;
   const firstReadyForReviewId =
     sortedDocs.find((d) => d.status === "pending" && d.chunkCount > 0)?.id ?? null;
 
@@ -628,7 +629,17 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
       {error && <p className="text-sm text-[var(--warn)]">{error}</p>}
 
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-[var(--muted)]">Your uploads</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-[var(--muted)]">
+          Your uploads
+          {/* Only the deck currently being reviewed is expanded, so with
+              several uploads at once the rest are easy to miss. Say how many
+              are still waiting. */}
+          {readyForReviewCount > 1 && (
+            <span className="ml-2 rounded-full bg-[rgba(251,191,36,0.16)] px-2 py-0.5 text-xs font-medium normal-case tracking-normal text-[var(--warn)]">
+              {readyForReviewCount} ready for review
+            </span>
+          )}
+        </h2>
         {anyProcessing ? (
           <span className="text-xs text-[var(--warn)]">● Auto-updating while processing…</span>
         ) : (
@@ -677,8 +688,14 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         // now includes pending decks other than the one up for review.
         const collapsible = doc.chunkCount > 0;
         const open = isOpen(doc);
+        // A collapsed deck that still needs a decision shouldn't look
+        // finished — ring it so the queue is visible at a glance.
+        const awaitingReview = doc.status === "pending" && doc.chunkCount > 0;
         return (
-          <div key={doc.id} className="glass rounded-3xl p-5">
+          <div
+            key={doc.id}
+            className={`glass rounded-3xl p-5 ${awaitingReview && !open ? "ring-1 ring-[var(--warn)]/40" : ""}`}
+          >
             <div
               className={`flex items-center justify-between ${collapsible ? "cursor-pointer select-none" : ""}`}
               onClick={collapsible ? () => toggleOpen(doc.id) : undefined}
@@ -708,7 +725,14 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
                 {doc.chunks.map((c) => (
                   <div key={c.id} className="rounded-2xl bg-black/20 p-3 text-sm">
                     {c.heading && <div className="mb-1 font-semibold text-[var(--brand2)]">{c.heading}</div>}
-                    <p className="text-[var(--text)]/85">{c.text}</p>
+                    {/* A title-only slide makes the heading and the body the
+                        same string (the heading is derived from the slide's
+                        first line), which rendered as a duplicated line and
+                        read like a bug. Show the body only when it adds
+                        something beyond the heading. */}
+                    {c.text.trim() !== (c.heading ?? "").trim() && (
+                      <p className="text-[var(--text)]/85">{c.text}</p>
+                    )}
                     <div className="mt-1 text-xs text-[var(--muted)]">📖 {c.citation}</div>
                     {doc.status === "approved" && <ChunkQuestions chunk={c} onChanged={refresh} />}
                   </div>
