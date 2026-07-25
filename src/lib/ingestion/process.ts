@@ -6,10 +6,23 @@ import { chunkExtractedText } from "./chunk";
 export class UnsupportedFileError extends Error {}
 export class DocumentNotFoundError extends Error {}
 
-// Download → extract → chunk → save. Shared by both ingestion paths:
-// called inline from the request for formats that need no model call, and
-// from inside the durable workflow's single step for those that do.
-export async function extractAndSaveChunks(documentId: string, storagePath: string): Promise<number> {
+// Extract → chunk → save. Shared by both ingestion paths: called inline from
+// the request for formats that need no model call, and from inside the
+// durable workflow's single step for those that do.
+//
+// `prextractedPages` lets the caller supply the text the browser already
+// pulled out of the file, which skips downloading it back out of Storage
+// entirely — that download was most of the 3023ms "process" phase measured
+// on a 15.8 MB deck, and at scale it means a serverless function no longer
+// holds every uploaded file in memory. Only offered for formats whose
+// extraction is deterministic and client-safe (PPTX); the original file is
+// still stored, so provenance is unaffected, and every chunk is reviewed by
+// the teacher before a student sees it.
+export async function extractAndSaveChunks(
+  documentId: string,
+  storagePath: string,
+  preextractedPages?: { pageOrSection: number; text: string }[],
+): Promise<number> {
   const admin = supabaseAdmin();
 
   const { data: doc, error: docError } = await admin
@@ -26,9 +39,12 @@ export async function extractAndSaveChunks(documentId: string, storagePath: stri
     );
   }
 
-  const buffer = await downloadCorpusFile(storagePath);
-  const extracted = await extractDocument(buffer, ext);
-  const chunks = await chunkExtractedText(doc.source_file, extracted.pages);
+  const pages =
+    preextractedPages && preextractedPages.length > 0
+      ? preextractedPages
+      : (await extractDocument(await downloadCorpusFile(storagePath), ext)).pages;
+
+  const chunks = await chunkExtractedText(doc.source_file, pages);
 
   const rows = chunks.map((c) => ({
     document_id: documentId,
