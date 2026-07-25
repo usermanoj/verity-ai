@@ -142,6 +142,8 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   const [diag, setDiag] = useState<string | null>(null);
   // Page-load breakdown (TTFB + interactive), captured once on mount.
   const [pageDiag, setPageDiag] = useState<string | null>(null);
+  // Per-phase breakdown of the last upload: authorise / transfer / process.
+  const [uploadDiag, setUploadDiag] = useState<string | null>(null);
   // Filenames shown as instant placeholder cards the moment Upload is
   // clicked, before any network call returns. Without this there's a dead
   // zone where nothing visibly happens, which is what makes people click
@@ -361,6 +363,14 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
     setNotice(
       `Uploading ${fileList.length} file${fileList.length > 1 ? "s" : ""}… please keep this tab open.`,
     );
+    // Per-phase timers. "Upload is slow" can mean three unrelated things —
+    // the authorising round trip, the bytes leaving the browser, or the
+    // server-side extract+chunk — and they need completely different fixes.
+    // Measure them separately rather than argue about the total.
+    const tStart = performance.now();
+    let initMs = 0;
+    let transferMs = 0;
+    let processMs = 0;
     try {
       const initRes = await fetch("/api/ingest/upload-init", {
         method: "POST",
@@ -373,6 +383,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           files: fileList.map((f) => ({ name: f.name, size: f.size })),
         }),
       });
+      initMs = Math.round(performance.now() - tStart);
       const { data: initData } = await safeJson(initRes);
       if (!initRes.ok) throw new Error((initData.error as string | undefined) || "Upload failed.");
 
@@ -400,17 +411,23 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           const file = fileList[i];
           if (!file) return `"${target.name}": file missing`;
 
+          const tTransfer = performance.now();
           const uploadErr = await putToSignedUrl(target.signedUrl, file, (bytesSent) => {
             sentByFile.set(i, bytesSent);
             reportProgress();
           });
+          // Files run in parallel, so the batch's wall-clock cost for each
+          // phase is its slowest file, not the sum.
+          transferMs = Math.max(transferMs, Math.round(performance.now() - tTransfer));
           if (uploadErr) return `"${target.name}": ${uploadErr}`;
 
+          const tProcess = performance.now();
           const completeRes = await fetch("/api/ingest/upload-complete", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ documentId: target.documentId, storagePath: target.path }),
           });
+          processMs = Math.max(processMs, Math.round(performance.now() - tProcess));
           if (!completeRes.ok) {
             const { data: completeData } = await safeJson(completeRes);
             return `"${target.name}": ${(completeData.error as string | undefined) || "failed to start processing"}`;
@@ -430,6 +447,12 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
             `This list updates itself, so there's no need to refresh or upload again.`,
         );
       }
+
+      const mb = (totalBytes / 1024 / 1024).toFixed(1);
+      setUploadDiag(
+        `upload: ${Math.round(performance.now() - tStart)}ms total — authorise ${initMs}ms · ` +
+          `transfer ${transferMs}ms (${mb} MB) · process ${processMs}ms`,
+      );
 
       // Clear the picked files so a second click can't silently re-upload
       // the same deck (which is how the duplicate cards happened). Section/
@@ -620,11 +643,13 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         <p className="text-sm text-[var(--muted)]">No uploads yet.</p>
       )}
 
-      {(pageDiag || diag) && (
+      {(pageDiag || diag || uploadDiag) && (
         <p className="pt-2 text-[11px] leading-relaxed text-[var(--muted)]/70">
           {pageDiag && <>⏱ {pageDiag}</>}
           {pageDiag && diag && <br />}
           {diag && <>⏱ {diag}</>}
+          {uploadDiag && <br />}
+          {uploadDiag && <span className="text-[var(--brand2)]">⏱ {uploadDiag}</span>}
         </p>
       )}
 
