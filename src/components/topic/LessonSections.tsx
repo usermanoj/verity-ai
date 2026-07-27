@@ -23,7 +23,7 @@ import type { CorpusChunk } from "@/data/corpus";
 // text. Anything unrecognised falls back to prose, so the failure mode is
 // "looks plain", never "shows something the teacher didn't approve".
 
-export type SectionMedia = { url: string; width?: number; height?: number };
+export type SectionMedia = { url: string; width?: number; height?: number; kind?: "figure" | "slide" };
 
 export default function LessonSections({
   chunks,
@@ -46,7 +46,10 @@ export default function LessonSections({
       return {
         heading,
         text: c.text.trim() === heading ? "" : c.text,
-        hasMedia: mediaFor(c).length > 0,
+        // Only an inline figure counts as already-illustrated. A rendered
+        // slide is collapsed by default, so treating it as media would
+        // quietly deny the section an interactive it could have had.
+        hasMedia: mediaFor(c).some((m) => m.kind !== "slide"),
       };
     }),
   );
@@ -120,6 +123,8 @@ function Section({
   const heading = chunk.heading?.trim() || "Section";
   const body = chunk.text.trim() === heading ? "" : chunk.text;
   const view = body ? classify(body) : { kind: "empty" as const };
+  const figures = media.filter((m) => m.kind !== "slide");
+  const slides = media.filter((m) => m.kind === "slide");
 
   return (
     <motion.section
@@ -165,9 +170,9 @@ function Section({
       )}
       {view.kind === "prose" && <ReadingText text={view.text} />}
 
-      {media.length > 0 && (
-        <div className={`mt-4 grid gap-3 ${media.length > 1 ? "sm:grid-cols-2" : ""}`}>
-          {media.map((m) => (
+      {figures.length > 0 && (
+        <div className={`mt-4 grid gap-3 ${figures.length > 1 ? "sm:grid-cols-2" : ""}`}>
+          {figures.map((m) => (
             <motion.figure
               key={m.url}
               initial={{ opacity: 0 }}
@@ -192,6 +197,34 @@ function Section({
             </motion.figure>
           ))}
         </div>
+      )}
+
+      {/* A rendered page carries the section's text as well as its diagram,
+          so showing it inline would print everything twice. It sits behind a
+          disclosure instead — there for the vector-drawn figures that cannot
+          be extracted any other way, and for a student who wants to see the
+          slide exactly as their teacher presented it. */}
+      {slides.length > 0 && (
+        <details className="group mt-4">
+          <summary className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--text)]">
+            <span className="transition-transform group-open:rotate-90">▸</span>
+            Show the original slide
+          </summary>
+          <div className="mt-3 grid gap-3">
+            {slides.map((m) => (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                key={m.url}
+                src={m.url}
+                alt={`Original slide for ${heading}`}
+                width={m.width}
+                height={m.height}
+                loading="lazy"
+                className="w-full rounded-2xl border border-[var(--border)]"
+              />
+            ))}
+          </div>
+        </details>
       )}
 
       {tables.map((t, i) => (

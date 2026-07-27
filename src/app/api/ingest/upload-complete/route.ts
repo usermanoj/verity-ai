@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     documentId?: string;
     storagePath?: string;
     pages?: { pageOrSection: number; text: string }[];
-    media?: { pageOrSection: number; storagePath: string; width: number; height: number }[];
+    media?: { pageOrSection: number; storagePath: string; width: number; height: number; kind?: string }[];
     tables?: { pageOrSection: number; headers: string[]; rows: string[][] }[];
   };
   if (!documentId || !storagePath) {
@@ -84,6 +84,9 @@ export async function POST(req: NextRequest) {
         storage_path: m.storagePath,
         width: typeof m.width === "number" ? m.width : null,
         height: typeof m.height === "number" ? m.height : null,
+        // Anything unrecognised records as a figure, which renders inline —
+        // the safe default, since a mislabelled slide would hide content.
+        kind: m.kind === "slide" ? ("slide" as const) : ("figure" as const),
       }));
     // A failure here costs the lesson its pictures, not its text.
     if (rows.length > 0) await supabaseAdmin().from("corpus_document_media").insert(rows);

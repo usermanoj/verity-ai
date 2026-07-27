@@ -78,7 +78,53 @@ function statusRank(doc: Doc): number {
 // succeed. Reads the body once as text, since a failed .json() call already
 // consumes the body and a second .text() call would throw. Also reports the
 // byte size, which is what makes a slow load diagnosable.
-type MediaManifestEntry = { pageOrSection: number; storagePath: string; width: number; height: number };
+type MediaManifestEntry = {
+  pageOrSection: number;
+  storagePath: string;
+  width: number;
+  height: number;
+  // "figure" is a diagram lifted out of the file; "slide" is a picture of a
+  // whole page. They render differently, so the distinction travels with the
+  // upload rather than being guessed later.
+  kind: "figure" | "slide";
+};
+
+// Uploads rendered slide images. Shares the signed-URL path with extracted
+// figures — the server has no reason to care how the bytes were produced.
+async function uploadRenderedPages(
+  documentId: string,
+  rendered: { pageOrSection: number; blob: Blob; width: number; height: number }[],
+): Promise<MediaManifestEntry[]> {
+  if (rendered.length === 0) return [];
+
+  const named = rendered.map((r) => ({ ...r, name: `page-${r.pageOrSection}.jpg` }));
+
+  const res = await fetch("/api/ingest/media-init", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      documentId,
+      files: named.map((r) => ({ name: r.name, size: r.blob.size })),
+    }),
+  });
+  if (!res.ok) return [];
+
+  const { data } = await safeJson(res);
+  const targets = (data.files as { name: string; path: string; signedUrl: string }[] | undefined) ?? [];
+  const byName = new Map(targets.map((t) => [t.name, t]));
+
+  const uploaded = await Promise.all(
+    named.map(async (r): Promise<MediaManifestEntry | null> => {
+      const target = byName.get(r.name);
+      if (!target) return null;
+      const err = await putToSignedUrl(target.signedUrl, new File([r.blob], r.name, { type: "image/jpeg" }), () => {});
+      if (err) return null;
+      return { pageOrSection: r.pageOrSection, storagePath: target.path, width: r.width, height: r.height, kind: "slide" };
+    }),
+  );
+
+  return uploaded.filter((m): m is MediaManifestEntry => m !== null);
+}
 
 // Uploads the diagrams pulled out of a deck and returns what actually landed.
 //
@@ -117,7 +163,7 @@ async function uploadExtractedMedia(
       const blob = new Blob([m.bytes as BlobPart], { type: `image/${m.extension === "jpg" ? "jpeg" : m.extension}` });
       const err = await putToSignedUrl(target.signedUrl, new File([blob], m.name), () => {});
       if (err) return null;
-      return { pageOrSection: m.pageOrSection, storagePath: target.path, width: m.width, height: m.height };
+      return { pageOrSection: m.pageOrSection, storagePath: target.path, width: m.width, height: m.height, kind: "figure" };
     }),
   );
 
@@ -499,7 +545,8 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           let extractedPages: { pageOrSection: number; text: string }[] | undefined;
           let uploadedMedia: MediaManifestEntry[] = [];
           let extractedTables: { pageOrSection: number; headers: string[]; rows: string[][] }[] = [];
-          if (file.name.split(".").pop()?.toLowerCase() === "pptx") {
+          const extension = file.name.split(".").pop()?.toLowerCase();
+          if (extension === "pptx") {
             try {
               const { extractPptx } = await import("@/lib/ingestion/pptx");
               const { pages, media, tables } = extractPptx(new Uint8Array(await file.arrayBuffer()));
@@ -511,6 +558,32 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
               uploadedMedia = await uploadExtractedMedia(target.documentId, media);
             } catch {
               // Any parsing trouble just falls back to the server path.
+              extractedPages = undefined;
+            }
+          } else if (extension === "pdf") {
+            // A PDF export is how a teacher reaches the diagrams PowerPoint
+            // draws as vector shapes: unzipping the .pptx can't see them
+            // because they are instructions rather than files, but a rendered
+            // page shows exactly what the class saw.
+            //
+            // Rendering happens here, in the teacher's own browser, so the
+            // material never travels anywhere new to be converted — no
+            // conversion vendor, no server-side renderer to operate, and no
+            // model calls, which matters while the Gateway is on free tier.
+            // Rendering needs the tab in front: the browser stops animation
+            // frames in a background tab and the PDF engine schedules its work
+            // on them, so switching away costs the slide pictures (the text,
+            // and the lesson, still arrive).
+            setUploadProgress(`Rendering ${file.name} on your device — keep this tab open…`);
+            try {
+              const { extractPdfInBrowser } = await import("@/lib/ingestion/pdf-client");
+              const { pages, rendered } = await extractPdfInBrowser(new Uint8Array(await file.arrayBuffer()));
+              extractedPages = pages;
+              uploadedMedia = await uploadRenderedPages(target.documentId, rendered);
+            } catch {
+              // Falls back to the server's own PDF text extraction, which
+              // still produces a perfectly usable lesson — just without
+              // pictures of the slides.
               extractedPages = undefined;
             }
           }

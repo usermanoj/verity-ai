@@ -221,6 +221,7 @@ export type Database = {
           storage_path: string;
           width: number | null;
           height: number | null;
+          kind: "figure" | "slide";
           created_at: string;
         };
         Insert: {
@@ -230,6 +231,7 @@ export type Database = {
           storage_path: string;
           width?: number | null;
           height?: number | null;
+          kind?: "figure" | "slide";
           created_at?: string;
         };
         Update: {
