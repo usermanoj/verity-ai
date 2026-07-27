@@ -75,6 +75,47 @@ describe("extractPptx — diagrams", () => {
     expect(media[0].pageOrSection).toBe(1);
   });
 
+  it("keeps a wordless diagram slide by attaching it to the point it illustrates", () => {
+    // Measured on the real 44-slide magnetism deck: 10 of its 30 diagrams sat
+    // on slides with no text, and treating "no text" as "nothing here" threw
+    // away a third of the visuals — the pure-diagram slides, which are the
+    // best ones. A wordless slide almost always illustrates the point just
+    // made, so it joins the previous page.
+    const zip = zipSync({
+      "ppt/slides/slide1.xml": strToU8(slideXml(["Magnetic field around a bar magnet"])),
+      "ppt/slides/slide2.xml": strToU8(slideWithImage("", "rId2").replace("<a:r><a:t></a:t></a:r>", "")),
+      "ppt/slides/_rels/slide2.xml.rels": strToU8(relsFor([["rId2", "../media/field.png"]])),
+      "ppt/media/field.png": pngBytes(700, 500),
+    });
+    const { pages, media } = extractPptx(new Uint8Array(zip));
+    expect(pages).toHaveLength(1);
+    expect(media).toHaveLength(1);
+    expect(media[0].pageOrSection).toBe(1);
+  });
+
+  it("holds a wordless opening slide's diagram for the first real page", () => {
+    const zip = zipSync({
+      "ppt/slides/slide1.xml": strToU8(slideWithImage("", "rId2").replace("<a:r><a:t></a:t></a:r>", "")),
+      "ppt/slides/_rels/slide1.xml.rels": strToU8(relsFor([["rId2", "../media/cover.png"]])),
+      "ppt/media/cover.png": pngBytes(800, 600),
+      "ppt/slides/slide2.xml": strToU8(slideXml(["What is magnetism?"])),
+    });
+    const { media } = extractPptx(new Uint8Array(zip));
+    expect(media).toHaveLength(1);
+    expect(media[0].pageOrSection).toBe(1);
+  });
+
+  it("keeps a small line-art diagram that compresses well", () => {
+    // A clean 300x300 PNG of a field sketch is a few kB. An earlier 6 kB
+    // floor discarded real diagrams for being efficiently encoded.
+    const zip = zipSync({
+      "ppt/slides/slide1.xml": strToU8(slideWithImage("Field sketch", "rId2")),
+      "ppt/slides/_rels/slide1.xml.rels": strToU8(relsFor([["rId2", "../media/sketch.png"]])),
+      "ppt/media/sketch.png": pngBytes(300, 300, 4 * 1024),
+    });
+    expect(extractPptx(new Uint8Array(zip)).media).toHaveLength(1);
+  });
+
   it("drops the logo that repeats across the deck", () => {
     const files: Record<string, Uint8Array> = { "ppt/media/logo.png": pngBytes(400, 300) };
     for (let i = 1; i <= 9; i++) {
