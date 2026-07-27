@@ -3,7 +3,6 @@ import { start } from "workflow/api";
 import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { needsModelChunking } from "@/lib/ingestion/chunk";
 import { extractAndSaveChunks } from "@/lib/ingestion/process";
 import { ingestDocumentWorkflow } from "@/workflows/ingest-document";
 
@@ -48,29 +47,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Document already processed." }, { status: 409 });
   }
 
-  const ext = doc.source_file.split(".").pop()?.toLowerCase() ?? "";
+  // The browser extracts PPTX text itself (it already has the file), so the
+  // server needn't pull the original back out of Storage. Shape-validated and
+  // bounded here, since it's client-supplied.
+  const supplied = Array.isArray(pages)
+    ? pages
+        .filter(
+          (p) => p && typeof p.pageOrSection === "number" && typeof p.text === "string" && p.text.length < 200_000,
+        )
+        .slice(0, 2000)
+    : undefined;
 
-  // Formats that need no model call are processed INLINE, right here.
+  // Route on whether the text is ALREADY extracted, not on file format.
   //
-  // They were previously handed to the durable workflow like everything
-  // else, and that dispatch was measured at 8–11 seconds for a slide deck
-  // whose real work (download, unzip, insert) takes under a second — the
-  // engine, not the work, was the wait. Durability buys nothing for an
-  // operation this short, so the request just does it and returns "ready".
-  if (!needsModelChunking(ext)) {
+  // Format was the wrong signal: it decided "needs a model call → send it to
+  // the durable workflow", but workflow dispatch measured 8–11s while the
+  // model call itself — fast tier, parallel batches, ~50 kB of text — takes a
+  // few seconds. The engine cost more than the work it was deferring.
+  //
+  // What actually justifies deferring is an unbounded server-side job:
+  // downloading a large PDF/DOCX and extracting it before the model even
+  // starts. When the client has already done the extraction, the remaining
+  // work is short and bounded, so the request just does it and returns
+  // "ready" — no dispatch, no polling wait.
+  if (supplied && supplied.length > 0) {
     try {
-      // The browser extracts PPTX text itself (it already has the file), so
-      // the server usually doesn't need to pull the original back out of
-      // Storage. Shape-validated and bounded here; falls back to downloading
-      // and extracting server-side if absent or malformed.
-      const supplied = Array.isArray(pages)
-        ? pages
-            .filter(
-              (p) =>
-                p && typeof p.pageOrSection === "number" && typeof p.text === "string" && p.text.length < 200_000,
-            )
-            .slice(0, 2000)
-        : undefined;
       const chunkCount = await extractAndSaveChunks(documentId, storagePath, supplied);
       return NextResponse.json({ documentId, status: "ready", chunkCount });
     } catch (err) {
@@ -81,8 +82,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Model-chunked formats (DOCX/PDF/TXT) can take tens of seconds, which is
-  // far too long to hold a request open — those stay on the workflow.
+  // Server-side extraction (a large PDF or DOCX downloaded from Storage,
+  // then chunked) is unbounded enough to be worth deferring — those stay on
+  // the durable workflow.
   await start(ingestDocumentWorkflow, [documentId, storagePath]);
 
   return NextResponse.json({ documentId, status: "processing" });
