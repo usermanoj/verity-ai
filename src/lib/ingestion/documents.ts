@@ -42,6 +42,10 @@ export type TeacherDocument = {
   // this count, and "processing" means chunkCount === 0 (not chunks.length,
   // which is empty by design for collapsed documents).
   chunkCount: number;
+  // Generated questions still awaiting this teacher's approval. Counted
+  // server-side across the document's chunks so the collapsed card can
+  // advertise the outstanding work without shipping any question text.
+  pendingQuestionCount: number;
   // Populated only for documents the UI actually renders expanded (pending
   // ones awaiting review). Approved/rejected documents render collapsed, so
   // their chunk text is fetched on demand when expanded — see
