@@ -75,14 +75,12 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
 
       <p className="text-sm leading-relaxed text-[var(--text)]/90">{item.prompt}</p>
 
+      {/* Each format needs its own control. Rendering every question as a
+          bare text box is what made "Which of the following is a magnetic
+          material?" unanswerable — its options existed nowhere on screen. */}
+      <AnswerInput question={item.question} value={input} onChange={setInput} onSubmit={() => input && check()} />
+
       <div className="mt-3 flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && input && check()}
-          placeholder={placeholderFor(item.question)}
-          className="flex-1 rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)] focus:ring-[var(--brand)]"
-        />
         <button
           onClick={check}
           disabled={!input}
@@ -93,7 +91,7 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
       </div>
 
       <div className="mt-2 text-[11px] text-[var(--muted)]">
-        ✓ Graded instantly & deterministically — value, unit and direction checked by rules, not by an AI guess.
+        ✓ Graded instantly & deterministically — by rules, not by an AI guess.
       </div>
 
       <AnimatePresence>
@@ -136,10 +134,146 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
   );
 }
 
+// The control a question is answered with, chosen by its kind.
+//
+// Grading stays deterministic for every format — each one serialises to the
+// string lib/grade.ts already expects, so no model is ever asked to mark a
+// student's work.
+function AnswerInput({
+  question,
+  value,
+  onChange,
+  onSubmit,
+}: {
+  question: PracticeItem["question"];
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+}) {
+  if (question.kind === "mcq" && question.options?.length) {
+    return (
+      <div className="mt-3 grid gap-2">
+        {question.options.map((option, i) => {
+          const letter = String.fromCharCode(65 + i);
+          const selected = value === letter;
+          return (
+            <button
+              key={option}
+              onClick={() => onChange(letter)}
+              className={`flex items-start gap-3 rounded-xl border p-3 text-left text-sm transition ${
+                selected ? "border-[var(--brand)] bg-[rgba(99,102,241,0.14)]" : "border-[var(--border)] hover:border-[var(--brand2)]"
+              }`}
+            >
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-black/30 text-[11px] font-semibold">
+                {letter}
+              </span>
+              <span>{option}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (question.kind === "truefalse") {
+    return (
+      <div className="mt-3 flex gap-2">
+        {["True", "False"].map((label) => (
+          <button
+            key={label}
+            onClick={() => onChange(label)}
+            className={`flex-1 rounded-xl border py-2.5 text-sm font-medium transition ${
+              value === label ? "border-[var(--brand)] bg-[rgba(99,102,241,0.14)]" : "border-[var(--border)] hover:border-[var(--brand2)]"
+            }`}
+          >
+            {label === "True" ? "✓ True" : "✗ False"}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  if (question.kind === "matching") {
+    return <MatchingInput pairs={question.pairs} value={value} onChange={onChange} />;
+  }
+
+  return (
+    <div className="mt-3">
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+        placeholder={placeholderFor(question)}
+        className="w-full rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)] focus:ring-[var(--brand)]"
+      />
+    </div>
+  );
+}
+
+// Each term gets a dropdown of the available meanings. A drag-and-drop board
+// would look better and be worse: it is fiddly on the iPads these students
+// actually use, and unusable with a keyboard or screen reader.
+function MatchingInput({
+  pairs,
+  value,
+  onChange,
+}: {
+  pairs: { left: string; right: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const chosen = new Map(
+    value
+      .split("\n")
+      .map((line) => line.split("="))
+      .filter((p): p is [string, string] => p.length === 2)
+      .map(([l, r]) => [l, r] as const),
+  );
+
+  // Shuffled once per question, deterministically, so the right answers do
+  // not simply sit in order — and so the list does not reshuffle on every
+  // keystroke, which would make it unusable.
+  const meanings = [...pairs.map((p) => p.right)].sort((a, b) => a.localeCompare(b));
+
+  function set(left: string, right: string) {
+    const next = new Map(chosen);
+    next.set(left, right);
+    onChange(
+      [...next.entries()]
+        .filter(([, r]) => r)
+        .map(([l, r]) => `${l}=${r}`)
+        .join("\n"),
+    );
+  }
+
+  return (
+    <div className="mt-3 grid gap-2">
+      {pairs.map((pair) => (
+        <div key={pair.left} className="grid items-center gap-2 sm:grid-cols-[1fr_1.3fr]">
+          <span className="text-sm font-medium">{pair.left}</span>
+          <select
+            value={chosen.get(pair.left) ?? ""}
+            onChange={(e) => set(pair.left, e.target.value)}
+            className="rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)] focus:ring-[var(--brand)]"
+          >
+            <option value="">Choose…</option>
+            {meanings.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Shows the expected ANSWER FORMAT (value + unit + direction) using an
 // obviously-fake dummy number — never the real expected value, so the
 // placeholder can't accidentally give away the answer.
 function placeholderFor(q: PracticeItem["question"]): string {
+  if (q.kind === "fill") return "Type the missing word…";
   if (q.kind !== "numeric") return "Type your answer…";
   const parts = ["e.g. 12", q.unit ?? ""];
   if (q.direction) parts.push(q.direction);
