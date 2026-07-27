@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 
 // Interactive illustrations for uploaded material.
@@ -21,37 +22,93 @@ import { motion } from "framer-motion";
 // that does not clearly match gets no visual rather than an approximate one.
 // A wrong diagram teaches a wrong thing, so ambiguity resolves to nothing.
 
-type VisualKind = "domains" | "field" | "broken" | "distance" | "electromagnet";
+export type VisualKind = "domains" | "field" | "broken" | "distance" | "electromagnet" | "conductor" | "grip";
 
-// Ordered: the first confident match wins. Each rule needs the concept AND a
-// corroborating term, so a passing mention ("...unlike a magnetic domain...")
-// in a section about something else does not pull in a simulation.
-const RULES: { kind: VisualKind; test: (h: string, t: string) => boolean }[] = [
+// Ordered most specific first, and the first match wins.
+//
+// The earlier version was not as conservative as its comment claimed. Two
+// loose regexes agreeing is not evidence: "magnetic field strength" in a
+// heading about the right-hand thumb rule matched the bar-magnet rule, and a
+// section on why solenoids use insulated wire matched the electromagnet rule.
+// Both rendered a diagram of the wrong thing, which is worse than rendering
+// nothing.
+//
+// So each rule now carries an `unless` guard naming the neighbouring concepts
+// it must yield to, and the specific concepts sit above the general ones.
+const RULES: { kind: VisualKind; when: RegExp; needs: RegExp; unless?: RegExp }[] = [
   {
     kind: "domains",
-    test: (h, t) => /domain/i.test(h) && /(align|line up|direction|magnetis)/i.test(t),
+    when: /domain/i,
+    needs: /(align|line up|same direction|magnetis)/i,
   },
   {
     kind: "broken",
-    test: (h, t) => /(broken|break|cut|piece)/i.test(h) && /(pole|north|south)/i.test(t),
+    when: /(broken|break|cut in half|piece)/i,
+    needs: /(pole|north|south)/i,
+  },
+  {
+    // The field around a straight wire is a different picture from the field
+    // around a bar magnet: concentric circles, not loops between poles.
+    kind: "conductor",
+    when: /(thumb rule|current[- ]carrying|straight wire|around a wire|around a conductor)/i,
+    needs: /(current|field|direction)/i,
+    unless: /(solenoid|coil|grip rule)/i,
+  },
+  {
+    kind: "grip",
+    when: /grip rule/i,
+    needs: /(solenoid|coil|current|north)/i,
   },
   {
     kind: "electromagnet",
-    test: (h, t) => /(electromagnet|solenoid|coil)/i.test(h) && /(current|turn|switch|control|on and off)/i.test(t),
+    when: /(electromagnet|solenoid|coil)/i,
+    needs: /(current|switch|turned on|on and off|strength)/i,
+    // A section about insulation, copper or short circuits is about wiring
+    // materials, not about switching a field on and off.
+    unless: /(insulat|copper wire|resistance|short circuit|grip rule|thumb rule)/i,
   },
   {
     kind: "distance",
-    test: (h, t) => /distance/i.test(h) && /(force|closer|greater|strength)/i.test(t),
+    when: /distance/i,
+    needs: /(force|closer|greater|strength)/i,
+    unless: /(wire|conductor|solenoid)/i,
   },
   {
     kind: "field",
-    test: (h, t) => /(magnetic field|field around|field line)/i.test(h) && /(pole|region|strength|force)/i.test(t),
+    when: /(magnetic field|field around|field line)/i,
+    needs: /(pole|region|bar magnet)/i,
+    // Everything current-related has a more specific rule above; without this
+    // the generic bar-magnet picture swallowed conductor and solenoid
+    // sections whose headings merely contained "magnetic field".
+    unless: /(conductor|wire|solenoid|coil|current|thumb rule|grip rule)/i,
   },
 ];
 
 export function visualFor(heading: string, text: string): VisualKind | null {
-  for (const rule of RULES) if (rule.test(heading, text)) return rule.kind;
+  const both = `${heading} ${text}`;
+  for (const rule of RULES) {
+    if (rule.unless?.test(both)) continue;
+    if (rule.when.test(heading) && rule.needs.test(text)) return rule.kind;
+  }
   return null;
+}
+
+// Picks which section gets which visual across a whole lesson.
+//
+// Repetition was the other half of the problem: a deck covering
+// electromagnets from five angles rendered the same coil widget five times,
+// which reads as automation rather than authorship. A concept earns its
+// interactive once, at the first section that matches it.
+export function assignVisuals(sections: { heading: string; text: string; hasMedia: boolean }[]): (VisualKind | null)[] {
+  const used = new Set<VisualKind>();
+  return sections.map((s) => {
+    // A diagram from the teacher's own deck always wins.
+    if (s.hasMedia) return null;
+    const kind = visualFor(s.heading, s.text);
+    if (!kind || used.has(kind)) return null;
+    used.add(kind);
+    return kind;
+  });
 }
 
 export default function ConceptVisual({ kind }: { kind: VisualKind }) {
@@ -65,10 +122,27 @@ export default function ConceptVisual({ kind }: { kind: VisualKind }) {
       {kind === "broken" && <BrokenMagnet />}
       {kind === "electromagnet" && <Electromagnet />}
       {kind === "distance" && <DistanceForce />}
-      {kind === "field" && <FieldLines />}
+      {kind === "conductor" && <StraightConductor />}
+      {kind === "grip" && <SolenoidGrip />}
+      {kind === "field" && (
+        <div>
+          <MagnetField3D />
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Drag to turn it. A field fills the space around a magnet — every flat diagram is a slice through this.
+          </p>
+        </div>
+      )}
     </figure>
   );
 }
+
+// three.js is ~600 kB. Loading it inside the component that needs it means a
+// lesson with no field section never downloads it at all, and one that has a
+// field section downloads it after its text is already readable.
+const MagnetField3D = dynamic(() => import("./MagnetField3D"), {
+  ssr: false,
+  loading: () => <div className="grid h-64 place-items-center text-xs text-[var(--muted)]">Loading 3D view…</div>,
+});
 
 /* ------------------------------------------------------- shared primitives */
 
@@ -307,58 +381,126 @@ function DistanceForce() {
   );
 }
 
-/* ----------------------------------------------------------------- field */
+/* ------------------------------------------------------- straight conductor */
 
-// "A magnetic field is the region around a magnet where magnetic materials
-// experience a force. Strength is concentrated at the poles." Moving a
-// compass around it is how that gets taught with iron filings.
-function FieldLines() {
-  const [pos, setPos] = useState({ x: 160, y: 30 });
-
-  // Angle of the field at the probe, from the two poles' positions.
-  const northX = 110;
-  const southX = 210;
-  const angle =
-    (Math.atan2(pos.y - 60, pos.x - northX) + Math.atan2(60 - pos.y, southX - pos.x)) / 2;
+// "Grip the conductor with your thumb along the current, and your fingers
+// point the way of the field." The whole rule is about handedness, so the
+// visual has to let you reverse the current and watch the field reverse with
+// it — a static arrow diagram teaches this badly, which is why students
+// memorise it instead of understanding it.
+function StraightConductor() {
+  const [up, setUp] = useState(true);
 
   return (
     <div>
-      <svg
-        viewBox="0 0 320 120"
-        className="w-full cursor-crosshair"
-        onMouseMove={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setPos({ x: ((e.clientX - r.left) / r.width) * 320, y: ((e.clientY - r.top) / r.height) * 120 });
-        }}
-      >
-        {[18, 34, 52].map((spread) => (
-          <g key={spread}>
-            <path
-              d={`M ${northX} 60 C ${northX} ${60 - spread * 1.6}, ${southX} ${60 - spread * 1.6}, ${southX} 60`}
-              fill="none"
-              stroke="#22d3ee"
-              strokeWidth="1.2"
-              opacity="0.55"
-            />
-            <path
-              d={`M ${northX} 60 C ${northX} ${60 + spread * 1.6}, ${southX} ${60 + spread * 1.6}, ${southX} 60`}
-              fill="none"
-              stroke="#22d3ee"
-              strokeWidth="1.2"
-              opacity="0.55"
+      <svg viewBox="0 0 320 150" className="w-full">
+        <line x1={160} y1={10} x2={160} y2={140} stroke="#fbbf24" strokeWidth="5" strokeLinecap="round" />
+        <motion.polygon
+          points={up ? "160,14 152,32 168,32" : "160,136 152,118 168,118"}
+          fill="#fbbf24"
+          animate={{ opacity: [0.35, 1, 0.35] }}
+          transition={{ duration: 1.6, repeat: Infinity }}
+        />
+        <text x={175} y={up ? 26 : 132} fill="#fbbf24" fontSize="11">
+          current
+        </text>
+
+        {/* Concentric circles, seen edge-on as ellipses: the field wraps the
+            wire rather than running between poles. */}
+        {[30, 52, 74].map((r, i) => (
+          <g key={r}>
+            <ellipse cx={160} cy={75} rx={r} ry={r / 2.6} fill="none" stroke="#22d3ee" strokeWidth="1.4" opacity={0.75 - i * 0.16} />
+            <motion.polygon
+              points={
+                up
+                  ? `${160 + r},${75 - 5} ${160 + r + 7},${75} ${160 + r},${75 + 5}`
+                  : `${160 + r},${75 + 5} ${160 + r + 7},${75} ${160 + r},${75 - 5}`
+              }
+              fill="#22d3ee"
+              opacity={0.75 - i * 0.16}
+              animate={{ x: [0, 3, 0] }}
+              transition={{ duration: 2, repeat: Infinity, delay: i * 0.2 }}
             />
           </g>
         ))}
-        <Bar x={110} y={46} w={100} h={28} />
-        <g transform={`translate(${pos.x} ${pos.y}) rotate(${(angle * 180) / Math.PI})`}>
-          <circle r="11" fill="rgba(0,0,0,0.55)" stroke="#fbbf24" strokeWidth="1.5" />
-          <polygon points="9,0 -4,-4 -4,4" fill="#f472b6" />
-        </g>
       </svg>
-      <p className="mt-1 text-xs text-[var(--muted)]">
-        Move your pointer over the magnet — the compass needle turns to follow the field. The lines crowd together at
-        the poles, where the field is strongest.
+      <button
+        onClick={() => setUp((v) => !v)}
+        className="mt-1 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-medium text-white"
+      >
+        ⇅ Reverse the current
+      </button>
+      <p className="mt-2 text-xs text-[var(--muted)]">
+        The field circles the wire. Reverse the current and the circles turn the other way — and the further out you
+        look, the weaker it gets.
       </p>
     </div>
   );
 }
+
+/* ------------------------------------------------------------- solenoid grip */
+
+// "Fingers along the current, thumb points to north." Reversing the current
+// swaps which end is north, which is the part a diagram can state but only an
+// interaction can make stick.
+function SolenoidGrip() {
+  const [clockwise, setClockwise] = useState(true);
+  const northLeft = clockwise;
+
+  return (
+    <div>
+      <svg viewBox="0 0 320 120" className="w-full">
+        <line x1={30} y1={60} x2={70} y2={60} stroke="#fbbf24" strokeWidth="3" />
+        <line x1={250} y1={60} x2={290} y2={60} stroke="#fbbf24" strokeWidth="3" />
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <ellipse key={i} cx={85 + i * 30} cy={60} rx={11} ry={30} fill="none" stroke="#fbbf24" strokeWidth="3" />
+        ))}
+
+        <motion.text
+          key={`${northLeft}`}
+          x={62}
+          y={26}
+          fontSize="17"
+          fontWeight="700"
+          fill={northLeft ? "#f472b6" : "#6366f1"}
+          textAnchor="middle"
+          initial={{ opacity: 0, scale: 0.7 }}
+          animate={{ opacity: 1, scale: 1 }}
+        >
+          {northLeft ? "N" : "S"}
+        </motion.text>
+        <motion.text
+          key={`r-${northLeft}`}
+          x={272}
+          y={26}
+          fontSize="17"
+          fontWeight="700"
+          fill={northLeft ? "#6366f1" : "#f472b6"}
+          textAnchor="middle"
+          initial={{ opacity: 0, scale: 0.7 }}
+          animate={{ opacity: 1, scale: 1 }}
+        >
+          {northLeft ? "S" : "N"}
+        </motion.text>
+
+        <motion.polygon
+          points={northLeft ? "150,95 190,95 190,88 205,99 190,110 190,103 150,103" : "190,95 150,95 150,88 135,99 150,110 150,103 190,103"}
+          fill="#34d399"
+          animate={{ opacity: [0.5, 1, 0.5] }}
+          transition={{ duration: 1.8, repeat: Infinity }}
+        />
+      </svg>
+      <button
+        onClick={() => setClockwise((v) => !v)}
+        className="mt-1 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-medium text-white"
+      >
+        ⇄ Reverse the current
+      </button>
+      <p className="mt-2 text-xs text-[var(--muted)]">
+        Wrap your right hand around the coil with your fingers following the current — your thumb points at the north
+        pole, now on the {northLeft ? "left" : "right"}.
+      </p>
+    </div>
+  );
+}
+
