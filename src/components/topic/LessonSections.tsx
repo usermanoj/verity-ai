@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import ReadingText from "@/components/reading/ReadingText";
-import ConceptVisual, { visualFor } from "./visuals/ConceptVisual";
+import ConceptVisual, { assignVisuals, type VisualKind } from "./visuals/ConceptVisual";
 import type { CorpusChunk } from "@/data/corpus";
 
 // Turns approved material into a designed lesson.
@@ -29,10 +29,26 @@ export default function LessonSections({
   chunks: CorpusChunk[];
   mediaByPage?: Record<number, SectionMedia[]>;
 }) {
+  const mediaFor = (c: CorpusChunk) => mediaByPage[pageOf(c.source)] ?? [];
+
+  // Decided across the whole lesson, not per section: a concept earns its
+  // interactive once. Five sections about electromagnets used to render five
+  // identical coil widgets, which reads as automation rather than authorship.
+  const visuals = assignVisuals(
+    chunks.map((c) => {
+      const heading = c.heading?.trim() ?? "";
+      return {
+        heading,
+        text: c.text.trim() === heading ? "" : c.text,
+        hasMedia: mediaFor(c).length > 0,
+      };
+    }),
+  );
+
   return (
     <div className="space-y-5">
       {chunks.map((c, i) => (
-        <Section key={c.id} chunk={c} index={i} media={mediaByPage[pageOf(c.source)] ?? []} />
+        <Section key={c.id} chunk={c} index={i} media={mediaFor(c)} visual={visuals[i]} />
       ))}
     </div>
   );
@@ -44,17 +60,20 @@ function pageOf(source: string): number {
   return match ? Number(match[1]) : -1;
 }
 
-function Section({ chunk, index, media }: { chunk: CorpusChunk; index: number; media: SectionMedia[] }) {
+function Section({
+  chunk,
+  index,
+  media,
+  visual,
+}: {
+  chunk: CorpusChunk;
+  index: number;
+  media: SectionMedia[];
+  visual: VisualKind | null;
+}) {
   const heading = chunk.heading?.trim() || "Section";
   const body = chunk.text.trim() === heading ? "" : chunk.text;
   const view = body ? classify(body) : { kind: "empty" as const };
-  // Matched against the section's own words, so the illustration always
-  // demonstrates a claim the teacher approved rather than decorating.
-  //
-  // A diagram from the deck itself always wins: the teacher drew or chose it
-  // for this syllabus and students saw it in class, which a generic
-  // interactive cannot match. Ours fills the gaps rather than competing.
-  const visual = body && media.length === 0 ? visualFor(heading, body) : null;
 
   return (
     <motion.section
