@@ -46,29 +46,60 @@ export function extractPptx(bytes: Uint8Array): { pages: ExtractedPage[]; media:
   const pages: ExtractedPage[] = [];
   const candidates: ExtractedMedia[] = [];
   let pageNo = 0;
+  // Images from slides that have no text of their own, waiting for a page to
+  // belong to. See the carry-forward note below.
+  let orphans: Omit<ExtractedMedia, "pageOrSection">[] = [];
 
   for (const name of slideNames) {
     const xml = strFromU8(files[name]);
     const text = pptSlideText(xml);
-    // A slide with no text gets no page, so there is no chunk for its images
-    // to attach to — they are dropped with it.
-    if (!text.trim()) continue;
+    const slideMedia = readSlideMedia(files, name, xml);
+
+    // A slide with no text produces no page — but it very often produces the
+    // best picture in the deck. Measured on a real 44-slide physics deck: 10
+    // of its 30 diagrams sat on text-less slides, a third of the visuals
+    // thrown away by treating "no text" as "nothing here".
+    //
+    // A wordless slide is almost always a diagram for the point just made, so
+    // its images join the previous page. Before any page exists they wait for
+    // the first one, which covers a deck that opens on a title image.
+    if (!text.trim()) {
+      if (pageNo > 0) {
+        for (const m of slideMedia) candidates.push({ ...m, pageOrSection: pageNo });
+      } else {
+        orphans = orphans.concat(slideMedia);
+      }
+      continue;
+    }
 
     pageNo += 1;
     pages.push({ pageOrSection: pageNo, text });
 
-    for (const path of slideMediaPaths(files, name, xml)) {
-      const data = files[path];
-      if (!data) continue;
-      const extension = path.split(".").pop()?.toLowerCase() ?? "";
-      if (!RENDERABLE.has(extension)) continue;
-      const size = imageSize(data, extension);
-      if (!size) continue;
-      candidates.push({ pageOrSection: pageNo, sourcePath: path, extension, bytes: data, width: size.width, height: size.height });
-    }
+    for (const m of orphans) candidates.push({ ...m, pageOrSection: pageNo });
+    orphans = [];
+
+    for (const m of slideMedia) candidates.push({ ...m, pageOrSection: pageNo });
   }
 
   return { pages, media: usefulMedia(candidates, pages.length) };
+}
+
+function readSlideMedia(
+  files: Record<string, Uint8Array>,
+  name: string,
+  xml: string,
+): Omit<ExtractedMedia, "pageOrSection">[] {
+  const out: Omit<ExtractedMedia, "pageOrSection">[] = [];
+  for (const path of slideMediaPaths(files, name, xml)) {
+    const data = files[path];
+    if (!data) continue;
+    const extension = path.split(".").pop()?.toLowerCase() ?? "";
+    if (!RENDERABLE.has(extension)) continue;
+    const size = imageSize(data, extension);
+    if (!size) continue;
+    out.push({ sourcePath: path, extension, bytes: data, width: size.width, height: size.height });
+  }
+  return out;
 }
 
 // EMF/WMF are common in decks pasted from Office but no browser renders them,
@@ -91,20 +122,25 @@ function usefulMedia(candidates: ExtractedMedia[], pageCount: number): Extracted
     // Banners and rules: no diagram is fifteen times wider than it is tall.
     const ratio = m.width / m.height;
     if (ratio > 6 || ratio < 1 / 6) return false;
-    if (m.bytes.byteLength < 6 * 1024) return false;
+    // Line-art diagrams compress extremely well — a clean 300×300 PNG of a
+    // field sketch can be 5 kB. The dimension check above already excludes
+    // decoration, so this floor only needs to catch degenerate files.
+    if (m.bytes.byteLength < 2 * 1024) return false;
     return true;
   });
 
   // Bound per page and per deck: a busy slide can hold a dozen fragments, and
-  // every image kept is bytes stored, transferred and paid for.
+  // every image kept is bytes stored, transferred and paid for. The per-page
+  // allowance is generous because a page now inherits the diagrams from any
+  // wordless slides around it.
   const perPage = new Map<number, number>();
   const bounded: ExtractedMedia[] = [];
   for (const m of kept) {
     const used = perPage.get(m.pageOrSection) ?? 0;
-    if (used >= 2) continue;
+    if (used >= 4) continue;
     perPage.set(m.pageOrSection, used + 1);
     bounded.push(m);
-    if (bounded.length >= 40) break;
+    if (bounded.length >= 60) break;
   }
   return bounded;
 }
