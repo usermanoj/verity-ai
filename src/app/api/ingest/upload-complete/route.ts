@@ -134,8 +134,20 @@ export async function POST(req: NextRequest) {
       const chunkCount = await extractAndSaveChunks(documentId, storagePath, supplied);
       return NextResponse.json({ documentId, status: "ready", chunkCount });
     } catch (err) {
+      // Remove the row rather than leaving it behind.
+      //
+      // A document that fails chunking is pending with zero chunks, which the
+      // teacher's list renders as "Processing…" — indistinguishable from work
+      // still running, and it never resolves. Failed uploads accumulated as
+      // phantoms that could not be approved, rejected or retried, and they
+      // also held their filename against the duplicate check.
+      //
+      // Deleting is safe: no chunks exist yet, and the teacher's next attempt
+      // is a clean upload of the same file.
+      await supabaseAdmin().from("corpus_documents").delete().eq("id", documentId);
+
       return NextResponse.json(
-        { error: err instanceof Error ? err.message : "Failed to process document." },
+        { error: explainIngestFailure(err) },
         { status: 500 },
       );
     }
@@ -147,4 +159,22 @@ export async function POST(req: NextRequest) {
   await start(ingestDocumentWorkflow, [documentId, storagePath]);
 
   return NextResponse.json({ documentId, status: "processing" });
+}
+
+// Turns a provider error into something a teacher can act on.
+//
+// The raw text is written for whoever integrated the API, not for the person
+// holding the deck: "This model does not support response format
+// `json_schema`. See supported models at console.groq.com/..." told a physics
+// teacher nothing except that the software was broken.
+function explainIngestFailure(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+
+  if (/rate[- ]?limit|too many requests|quota/i.test(message)) {
+    return "The AI service is busy right now. Nothing was saved — please try this upload again in a minute.";
+  }
+  if (/json_schema|response format|structured output/i.test(message)) {
+    return "The AI service returned an unusable response. Nothing was saved — please try again.";
+  }
+  return "Couldn't read this file. Nothing was saved — please check it opens normally and try again.";
 }

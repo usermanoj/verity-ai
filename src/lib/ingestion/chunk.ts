@@ -1,6 +1,6 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { CHUNK_MODEL, GATEWAY_FALLBACK_MODELS, mapAiCalls, withRateLimitRetry } from "@/lib/ai";
+import { CHUNK_MODEL, STRUCTURED_FALLBACK_MODELS, mapAiCalls, withRateLimitRetry } from "@/lib/ai";
 import type { ExtractedPage } from "./extract";
 
 const ChunkSchema = z.object({
@@ -107,7 +107,7 @@ async function deriveOutline(sourceFileName: string, pages: ExtractedPage[]): Pr
       ].join("\n"),
       prompt: `Source file: ${sourceFileName}\n\nSlide openings:\n${openings}`,
       output: Output.object({ schema: z.object({ modules: z.array(z.string()).min(1).max(10) }) }),
-      providerOptions: { gateway: { models: GATEWAY_FALLBACK_MODELS } },
+      providerOptions: { gateway: { models: STRUCTURED_FALLBACK_MODELS } },
       }),
     );
     return output.modules;
@@ -133,7 +133,7 @@ async function chunkBatch(sourceFileName: string, pages: ExtractedPage[], outlin
     system: SYSTEM_PROMPT,
     prompt: `Source file: ${sourceFileName}${outlineBlock}\n\n${pagesBlock}`,
     output: Output.object({ schema: ChunkingResultSchema }),
-    providerOptions: { gateway: { models: GATEWAY_FALLBACK_MODELS } },
+    providerOptions: { gateway: { models: STRUCTURED_FALLBACK_MODELS } },
   });
 
   // A batch can still drift off the agreed vocabulary. Anything not on the

@@ -39,6 +39,23 @@ export const GATEWAY_FALLBACK_MODELS = [
   "meta/llama-3.3-70b",
 ];
 
+// Failover for calls that ask for a typed object (Output.object / json_schema)
+// rather than prose.
+//
+// The list above cannot be reused for those. Its last resort, llama-3.3-70b,
+// is served through Groq, which rejects `json_schema` outright — so the
+// moment the primary model was rate-limited, ingestion failed with "This
+// model does not support response format `json_schema`" instead of degrading.
+// A fallback that cannot satisfy the request is not a fallback.
+//
+// Every model here has been chosen because it supports structured output;
+// adding one that doesn't turns a rate limit into a hard failure.
+export const STRUCTURED_FALLBACK_MODELS = [
+  "anthropic/claude-haiku-4.5",
+  "anthropic/claude-sonnet-5",
+  "openai/gpt-5.4-mini",
+];
+
 // How many model calls this app will have in flight at once.
 //
 // Ingestion fans out per batch, and question generation fanned out per chunk
