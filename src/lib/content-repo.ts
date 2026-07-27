@@ -105,6 +105,10 @@ class PostgresContentRepository implements ContentRepository {
       .from("corpus_documents")
       .select("id, source_file, corpus_document_sections(classes(courses(subject, grade)))")
       .eq("status", "approved")
+      // Superseded documents stay in the database as history for the teacher,
+      // but a student must never see last year's deck listed beside this
+      // year's under the same name.
+      .is("superseded_at", null)
       .order("created_at", { ascending: false })
       .limit(200);
     if (error) throw error;
@@ -128,6 +132,9 @@ class PostgresContentRepository implements ContentRepository {
       .select("id, source_file, corpus_document_sections(classes(courses(subject, grade)))")
       .eq("id", id)
       .eq("status", "approved")
+      // A direct link to a superseded document is a link to material the
+      // teacher has replaced, so it 404s rather than teaching from it.
+      .is("superseded_at", null)
       .maybeSingle();
     return data ? toTopicMeta(data as unknown as DocumentRow) : undefined;
   }

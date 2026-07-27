@@ -9,6 +9,19 @@ export type GeneratedQuestionRow = {
   status: "pending" | "approved" | "rejected";
 };
 
+// An existing, current document whose name a new upload collides with.
+// Returned by upload-init (HTTP 409) before anything is written, so the
+// teacher chooses between replacing it and keeping it as an earlier version.
+export type UploadConflict = {
+  name: string;
+  existingId: string;
+  version: number;
+  status: string;
+  uploadedAt: string;
+};
+
+export type UploadResolution = "replace" | "version";
+
 export type TeacherChunk = {
   id: string;
   heading: string | null;
@@ -22,6 +35,9 @@ export type TeacherDocument = {
   source_file: string;
   status: "pending" | "approved" | "rejected";
   created_at: string;
+  // 1 unless the teacher chose "keep both" on a name collision. Superseded
+  // documents are filtered out server-side, so this is the live one.
+  version: number;
   // Always accurate, even when `chunks` is empty — the collapsed card shows
   // this count, and "processing" means chunkCount === 0 (not chunks.length,
   // which is empty by design for collapsed documents).

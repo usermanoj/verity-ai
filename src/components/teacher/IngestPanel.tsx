@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { TeacherDocument } from "@/lib/ingestion/documents";
+import type { TeacherDocument, UploadConflict, UploadResolution } from "@/lib/ingestion/documents";
 import { currentAcademicYear } from "@/lib/ingestion/academic-year";
 import { PRESSABLE } from "@/lib/ui";
 import ChunkQuestions from "./ChunkQuestions";
@@ -155,6 +155,11 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   // Which document is mid approve/reject, so that card's own buttons can show
   // the pending state rather than sitting inert until the server replies.
   const [reviewing, setReviewing] = useState<{ id: string; approved: boolean } | null>(null);
+  // Filenames that already exist, awaiting the teacher's replace/keep-both
+  // decision. The original FormData is held alongside so the same batch —
+  // same files, same sections — is retried rather than rebuilt.
+  const [conflicts, setConflicts] = useState<UploadConflict[]>([]);
+  const pendingFormRef = useRef<FormData | null>(null);
   // Re-entry guard read synchronously; `uploading` state can be stale inside
   // an in-flight handler's closure.
   const busyRef = useRef(false);
@@ -334,7 +339,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
     void upload(new FormData(e.currentTarget));
   }
 
-  async function upload(form: FormData) {
+  async function upload(form: FormData, resolutions?: Record<string, UploadResolution>) {
     const fileList = form.getAll("file").filter((f): f is File => f instanceof File);
 
     // Clicking Upload again mid-flight gets a real explanation rather than a
@@ -382,10 +387,26 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           academicYear: form.get("academicYear"),
           sections: form.get("sections"),
           files: fileList.map((f) => ({ name: f.name, size: f.size })),
+          resolutions,
         }),
       });
       initMs = Math.round(performance.now() - tStart);
       const { data: initData } = await safeJson(initRes);
+
+      // A name already in use is a question, not a failure. Nothing has been
+      // written yet, so the whole batch pauses here and is retried verbatim
+      // once the teacher decides — re-uploading a corrected deck is the
+      // normal way to fix material, and it used to silently create a second
+      // document that students saw as a duplicate topic.
+      const conflicts = (initData.conflicts as UploadConflict[] | undefined) ?? [];
+      if (initRes.status === 409 && conflicts.length > 0) {
+        pendingFormRef.current = form;
+        setConflicts(conflicts);
+        setNotice(null);
+        setPendingNames([]);
+        return;
+      }
+
       if (!initRes.ok) throw new Error((initData.error as string | undefined) || "Upload failed.");
 
       const targets =
@@ -628,6 +649,23 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
       )}
       {error && <p className="text-sm text-[var(--warn)]">{error}</p>}
 
+      {conflicts.length > 0 && (
+        <ConflictDialog
+          conflicts={conflicts}
+          onCancel={() => {
+            setConflicts([]);
+            pendingFormRef.current = null;
+            setNotice("Upload cancelled — nothing was changed.");
+          }}
+          onResolve={(resolutions) => {
+            const form = pendingFormRef.current;
+            setConflicts([]);
+            pendingFormRef.current = null;
+            if (form) void upload(form, resolutions);
+          }}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-widest text-[var(--muted)]">
           Your uploads
@@ -703,6 +741,14 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
               <div className="flex items-center gap-2 font-medium">
                 {collapsible && <span className="text-xs text-[var(--muted)]">{open ? "▾" : "▸"}</span>}
                 <span>{doc.source_file}</span>
+                {doc.version > 1 && (
+                  <span
+                    title="An earlier version of this file is kept as history"
+                    className="rounded-full bg-[rgba(99,102,241,0.18)] px-2 py-0.5 text-[11px] text-[var(--brand2)]"
+                  >
+                    v{doc.version}
+                  </span>
+                )}
                 {collapsible && doc.chunkCount > 0 && (
                   <span className="text-xs font-normal text-[var(--muted)]">· {doc.chunkCount} chunks</span>
                 )}
@@ -769,6 +815,124 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         );
       })}
     </div>
+  );
+}
+
+// Asks, per colliding filename, what should happen to the document already
+// there. Defaults to "replace" because correcting a deck is far more common
+// than deliberately keeping two editions — but the choice is always shown,
+// never assumed, since replace destroys the old chunks and its approvals.
+function ConflictDialog({
+  conflicts,
+  onCancel,
+  onResolve,
+}: {
+  conflicts: UploadConflict[];
+  onCancel: () => void;
+  onResolve: (resolutions: Record<string, UploadResolution>) => void;
+}) {
+  const [choices, setChoices] = useState<Record<string, UploadResolution>>(() =>
+    Object.fromEntries(conflicts.map((c) => [c.name, "replace" as UploadResolution])),
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="conflict-title"
+        className="glass max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-3xl p-6"
+      >
+        <h3 id="conflict-title" className="text-lg font-semibold">
+          {conflicts.length === 1 ? "This file already exists" : `${conflicts.length} files already exist`}
+        </h3>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Choose what to do with the material you uploaded before. Nothing has been changed yet.
+        </p>
+
+        <div className="mt-5 space-y-4">
+          {conflicts.map((c) => (
+            <div key={c.name} className="rounded-2xl border border-[var(--border)] p-4">
+              <div className="text-sm font-medium break-all">{c.name}</div>
+              <div className="mt-0.5 text-xs text-[var(--muted)]">
+                Currently v{c.version} · {c.status} · uploaded {new Date(c.uploadedAt).toLocaleDateString()}
+              </div>
+
+              <div className="mt-3 grid gap-2">
+                <ChoiceRow
+                  name={c.name}
+                  value="replace"
+                  checked={choices[c.name] === "replace"}
+                  onChange={(v) => setChoices((prev) => ({ ...prev, [c.name]: v }))}
+                  title="Replace it"
+                  detail={`The old version and its questions are deleted. Stays v${c.version}.`}
+                />
+                <ChoiceRow
+                  name={c.name}
+                  value="version"
+                  checked={choices[c.name] === "version"}
+                  onChange={(v) => setChoices((prev) => ({ ...prev, [c.name]: v }))}
+                  title="Keep both — new version"
+                  detail={`The old one is kept as history. This becomes v${c.version + 1} and is what students see.`}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className={`rounded-xl border border-[var(--border)] px-4 py-2 text-sm ${PRESSABLE}`}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onResolve(choices)}
+            className={`rounded-xl bg-[var(--brand)] px-4 py-2 text-sm font-medium text-white ${PRESSABLE}`}
+          >
+            Continue upload
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChoiceRow({
+  name,
+  value,
+  checked,
+  onChange,
+  title,
+  detail,
+}: {
+  name: string;
+  value: UploadResolution;
+  checked: boolean;
+  onChange: (v: UploadResolution) => void;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer gap-3 rounded-xl border p-3 transition-colors ${
+        checked ? "border-[var(--brand)] bg-[rgba(99,102,241,0.12)]" : "border-[var(--border)]"
+      }`}
+    >
+      <input
+        type="radio"
+        name={`resolution-${name}`}
+        value={value}
+        checked={checked}
+        onChange={() => onChange(value)}
+        className="mt-1"
+      />
+      <span>
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="block text-xs text-[var(--muted)]">{detail}</span>
+      </span>
+    </label>
   );
 }
 
