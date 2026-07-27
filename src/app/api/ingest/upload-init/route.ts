@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { createSignedUploadUrl } from "@/lib/supabase/storage";
 import { currentAcademicYear, parseSections } from "@/lib/ingestion/academic-year";
 import { isSupportedExtension } from "@/lib/ingestion/extract";
+import type { UploadConflict } from "@/lib/ingestion/documents";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
     academicYear?: string;
     sections?: string;
     files?: FileMeta[];
+    resolutions?: Record<string, string>;
   } | null;
   if (!body) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -74,6 +76,14 @@ export async function POST(req: NextRequest) {
   // User-scoped client: the function reads auth.uid() itself, so identity
   // comes from the caller's verified JWT and the role gate needs no separate
   // query of its own.
+  // Only choices the function understands are forwarded; anything else is
+  // dropped so it re-reports as an unresolved conflict rather than being
+  // treated as a decision the teacher never made.
+  const resolutions: Record<string, string> = {};
+  for (const [name, choice] of Object.entries(body.resolutions ?? {})) {
+    if (choice === "replace" || choice === "version") resolutions[name] = choice;
+  }
+
   const supabase = await supabaseServer();
   const { data, error } = await supabase.rpc("teacher_upload_init", {
     p_subject: subject,
@@ -81,12 +91,24 @@ export async function POST(req: NextRequest) {
     p_academic_year: academicYear,
     p_sections: sectionNames,
     p_files: files.map((f) => f.name),
+    p_resolutions: resolutions,
   });
   if (error) {
     return NextResponse.json({ error: "Failed to create document records." }, { status: 500 });
   }
 
-  const result = (data ?? {}) as { error?: string; documents?: { id: string; name: string }[] };
+  const result = (data ?? {}) as {
+    error?: string;
+    conflicts?: UploadConflict[];
+    documents?: { id: string; name: string }[];
+  };
+
+  // A name already in use isn't a failure — it's a question. Nothing has been
+  // written at this point, so the client can ask and retry the whole batch.
+  if (result.conflicts && result.conflicts.length > 0) {
+    return NextResponse.json({ conflicts: result.conflicts }, { status: 409 });
+  }
+
   if (result.error) {
     // "Not signed in" / wrong role are authorisation failures; a section owned
     // by another teacher is a conflict.

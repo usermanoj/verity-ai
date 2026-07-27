@@ -172,6 +172,9 @@ export type Database = {
           source_file: string;
           status: "pending" | "approved" | "rejected";
           created_at: string;
+          version: number;
+          superseded_at: string | null;
+          superseded_by: string | null;
         };
         Insert: {
           id?: string;
@@ -179,6 +182,9 @@ export type Database = {
           source_file: string;
           status?: "pending" | "approved" | "rejected";
           created_at?: string;
+          version?: number;
+          superseded_at?: string | null;
+          superseded_by?: string | null;
         };
         Update: {
           id?: string;
@@ -186,6 +192,9 @@ export type Database = {
           source_file?: string;
           status?: "pending" | "approved" | "rejected";
           created_at?: string;
+          version?: number;
+          superseded_at?: string | null;
+          superseded_by?: string | null;
         };
         Relationships: [];
       };
