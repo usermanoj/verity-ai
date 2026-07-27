@@ -50,7 +50,14 @@ function pptSlideText(xml: string): string {
 
   const lines: string[] = [];
   for (const para of body.split("</a:p>")) {
-    const runs = [...para.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((m) => decodeXmlEntities(m[1]));
+    // <a:t> carries attributes more often than it looks — PowerPoint emits
+    // xml:space="preserve" on any run whose text has meaningful leading or
+    // trailing whitespace, which is most runs that continue a word or phrase
+    // started by the previous one. Matching only the bare tag dropped those
+    // runs silently, so a slide reading "Scrap yard Electromagnets" reached
+    // students as "Scrap yard Electro" — text vanished mid-word with nothing
+    // to indicate anything was missing.
+    const runs = [...para.matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)].map((m) => decodeXmlEntities(m[1]));
     const line = runs.join("").trim();
     if (line) lines.push(line);
   }
