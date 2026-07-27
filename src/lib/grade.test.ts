@@ -127,8 +127,38 @@ describe("gradeMatching", () => {
   } as const;
 
   it("marks a full match correct", () => {
+    const answer = q.pairs.map((p, i) => `${i}=${p.right}`).join("\n");
+    expect(gradeMatching(q, answer).correct).toBe(true);
+  });
+
+  it("still grades an answer keyed by the term, as older ones were", () => {
     const answer = q.pairs.map((p) => `${p.left}=${p.right}`).join("\n");
     expect(gradeMatching(q, answer).correct).toBe(true);
+  });
+
+  it("grades repeated terms independently, one row at a time", () => {
+    // A real generated question: two terms, four rows, one per property.
+    // Keying answers by the term's text made rows 0 and 2 share an answer, so
+    // four choices graded as two.
+    const repeated = {
+      kind: "matching",
+      pairs: [
+        { left: "Electromagnet", right: "Can be switched on and off" },
+        { left: "Permanent magnet", right: "Cannot be turned off" },
+        { left: "Electromagnet", right: "Strength can be changed" },
+        { left: "Permanent magnet", right: "Strength cannot be varied" },
+      ],
+    } as const;
+
+    const allRight = repeated.pairs.map((p, i) => `${i}=${p.right}`).join("\n");
+    expect(gradeMatching(repeated, allRight).correct).toBe(true);
+
+    // Getting row 2 wrong must cost exactly one mark, not two.
+    const oneWrong = repeated.pairs
+      .map((p, i) => `${i}=${i === 2 ? "Cannot be turned off" : p.right}`)
+      .join("\n");
+    const r = gradeMatching(repeated, oneWrong);
+    expect(r.score).toBeCloseTo(3 / 4);
   });
 
   it("gives partial credit, because two of three is not nothing", () => {
