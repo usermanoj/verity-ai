@@ -13,9 +13,39 @@ export type NumericQuestion = {
 export type McqQuestion = {
   kind: "mcq";
   correct: string;          // e.g. "C"
+  // The choices themselves. Generated questions used to carry only `correct`,
+  // so "Which of the following is a magnetic material?" reached students as a
+  // blank text box with nothing to choose from — unanswerable, and marked
+  // wrong whatever they typed. Optional because the hand-authored demo banks
+  // spell their options out inside the prompt text.
+  options?: string[];
 };
 
-export type Question = NumericQuestion | McqQuestion;
+export type TrueFalseQuestion = {
+  kind: "truefalse";
+  correct: boolean;
+  // Why the statement is true or false, in the source's own terms.
+  because?: string;
+};
+
+export type FillBlankQuestion = {
+  kind: "fill";
+  // Every spelling that counts as right. ESL students should not lose a mark
+  // to "magnetised" vs "magnetized", or to a stray capital.
+  accept: string[];
+};
+
+export type MatchingQuestion = {
+  kind: "matching";
+  pairs: { left: string; right: string }[];
+};
+
+export type Question =
+  | NumericQuestion
+  | McqQuestion
+  | TrueFalseQuestion
+  | FillBlankQuestion
+  | MatchingQuestion;
 
 export type GradeResult = {
   correct: boolean;
@@ -93,16 +123,130 @@ export function gradeNumeric(q: NumericQuestion, answer: string): GradeResult {
 }
 
 export function gradeMcq(q: McqQuestion, answer: string): GradeResult {
-  const a = (answer || "").trim().toUpperCase().replace(/[).\s]/g, "");
-  const correct = a === q.correct.trim().toUpperCase();
+  const given = (answer || "").trim();
+  const expected = q.correct.trim();
+
+  // Both sides resolve to the option they name before being compared. A
+  // choice arrives as a letter ("B"), a position ("2"), or the option's own
+  // text, depending on whether the student clicked or typed — comparing the
+  // raw strings marked "2" and "Iron" wrong against a correct answer of "B".
+  const chosen = optionText(q, given);
+  const answerText = optionText(q, expected);
+  const correct =
+    chosen !== undefined && answerText !== undefined
+      ? normaliseText(chosen) === normaliseText(answerText)
+      : normaliseChoice(given) === normaliseChoice(expected);
+
   return {
     correct,
     score: correct ? 1 : 0,
-    feedback: correct ? "Correct!" : "Not quite — review the material and try again.",
+    feedback: correct
+      ? "Correct!"
+      : answerText
+        ? `Not quite — the answer is ${answerText}.`
+        : "Not quite — review the material and try again.",
+    details: {},
+  };
+}
+
+// "B", "b)", "2" and the option's own text all name the same choice.
+function optionText(q: McqQuestion, key: string): string | undefined {
+  if (!q.options) return undefined;
+  const k = normaliseChoice(key);
+  const index = /^[A-Z]$/.test(k) ? k.charCodeAt(0) - 65 : Number(k) - 1;
+  if (Number.isInteger(index) && index >= 0 && index < q.options.length) return q.options[index];
+  return q.options.find((o) => normaliseText(o) === normaliseText(key));
+}
+
+function normaliseChoice(s: string): string {
+  return s.trim().toUpperCase().replace(/[).\s]/g, "");
+}
+
+// ESL students should not lose a mark to punctuation, case, or a doubled
+// space — the physics is what is being tested here, not typing.
+function normaliseText(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[.,;:!?'"()]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Collapses -ise/-yse spellings onto their -ize/-yze counterparts so the two
+// variants of one word compare equal.
+function toZ(s: string): string {
+  return s.replace(/is(e|ed|es|ing|ation)/g, "iz$1").replace(/ys(e|ed|es|ing)/g, "yz$1");
+}
+
+export function gradeTrueFalse(q: TrueFalseQuestion, answer: string): GradeResult {
+  const a = normaliseText(answer);
+  const said = /^(t|true|yes|correct)$/.test(a) ? true : /^(f|false|no|incorrect)$/.test(a) ? false : null;
+  const correct = said !== null && said === q.correct;
+  return {
+    correct,
+    score: correct ? 1 : 0,
+    feedback: correct
+      ? `Correct — ${q.because ?? "that matches the material."}`
+      : said === null
+        ? "Answer True or False."
+        : `Not quite. ${q.because ?? "Re-read this section."}`,
+    details: {},
+  };
+}
+
+export function gradeFill(q: FillBlankQuestion, answer: string): GradeResult {
+  const given = normaliseText(answer);
+  // British and American spellings of the same word are both right: the
+  // syllabus is taught in one and the internet is written in the other, and
+  // a student who knows the physics should not be marked down for which one
+  // they met first. The -ise/-ize swap has to apply mid-word — "magnetised"
+  // ends in "d", so anchoring it to a word boundary never fired.
+  const correct = q.accept.some((a) => {
+    const want = normaliseText(a);
+    return given === want || toZ(given) === toZ(want);
+  });
+  return {
+    correct,
+    score: correct ? 1 : 0,
+    feedback: correct ? "Correct!" : `Not quite — the word is "${q.accept[0]}".`,
+    details: {},
+  };
+}
+
+// The answer is the student's pairing, serialised as "left=right" per line, so
+// grading stays deterministic and needs no model call.
+export function gradeMatching(q: MatchingQuestion, answer: string): GradeResult {
+  const given = new Map<string, string>();
+  for (const line of (answer || "").split("\n")) {
+    const [left, right] = line.split("=");
+    if (left && right) given.set(normaliseText(left), normaliseText(right));
+  }
+
+  const rightCount = q.pairs.filter((p) => given.get(normaliseText(p.left)) === normaliseText(p.right)).length;
+  const correct = rightCount === q.pairs.length;
+  return {
+    correct,
+    // Partial credit: getting three of four pairs is not the same as knowing
+    // nothing, and an all-or-nothing score teaches nothing about what to fix.
+    score: q.pairs.length === 0 ? 0 : rightCount / q.pairs.length,
+    feedback: correct
+      ? "All matched correctly!"
+      : `${rightCount} of ${q.pairs.length} matched. Look again at the ones left over.`,
     details: {},
   };
 }
 
 export function grade(q: Question, answer: string): GradeResult {
-  return q.kind === "numeric" ? gradeNumeric(q, answer) : gradeMcq(q, answer);
+  switch (q.kind) {
+    case "numeric":
+      return gradeNumeric(q, answer);
+    case "mcq":
+      return gradeMcq(q, answer);
+    case "truefalse":
+      return gradeTrueFalse(q, answer);
+    case "fill":
+      return gradeFill(q, answer);
+    case "matching":
+      return gradeMatching(q, answer);
+  }
 }
