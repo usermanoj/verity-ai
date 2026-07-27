@@ -213,6 +213,12 @@ function AnswerInput({
 // Each term gets a dropdown of the available meanings. A drag-and-drop board
 // would look better and be worse: it is fiddly on the iPads these students
 // actually use, and unusable with a keyboard or screen reader.
+//
+// Answers are keyed by ROW, not by the term's text. A generated question can
+// legitimately repeat a term — "Electromagnet / Permanent magnet /
+// Electromagnet / Permanent magnet", one row per property — and keying by
+// text made the two rows share a single answer: choosing for the first
+// silently filled the third, and grading collapsed four rows into two.
 function MatchingInput({
   pairs,
   value,
@@ -222,39 +228,35 @@ function MatchingInput({
   value: string;
   onChange: (v: string) => void;
 }) {
-  const chosen = new Map(
-    value
-      .split("\n")
-      .map((line) => line.split("="))
-      .filter((p): p is [string, string] => p.length === 2)
-      .map(([l, r]) => [l, r] as const),
-  );
+  const chosen = parseMatchingAnswer(value, pairs.length);
 
-  // Shuffled once per question, deterministically, so the right answers do
-  // not simply sit in order — and so the list does not reshuffle on every
-  // keystroke, which would make it unusable.
-  const meanings = [...pairs.map((p) => p.right)].sort((a, b) => a.localeCompare(b));
+  // Sorted rather than left in source order, so the answers don't simply line
+  // up with the terms. Deterministic, so the list doesn't reshuffle on every
+  // keystroke — and de-duplicated, since two rows sharing a property should
+  // offer it once.
+  const meanings = [...new Set(pairs.map((p) => p.right))].sort((a, b) => a.localeCompare(b));
 
-  function set(left: string, right: string) {
-    const next = new Map(chosen);
-    next.set(left, right);
+  function set(row: number, right: string) {
+    const next = [...chosen];
+    next[row] = right;
     onChange(
-      [...next.entries()]
-        .filter(([, r]) => r)
-        .map(([l, r]) => `${l}=${r}`)
+      next
+        .map((r, i) => (r ? `${i}=${r}` : ""))
+        .filter(Boolean)
         .join("\n"),
     );
   }
 
   return (
     <div className="mt-3 grid gap-2">
-      {pairs.map((pair) => (
-        <div key={pair.left} className="grid items-center gap-2 sm:grid-cols-[1fr_1.3fr]">
+      {pairs.map((pair, row) => (
+        <div key={row} className="grid items-center gap-2 sm:grid-cols-[1fr_1.3fr]">
           <span className="text-sm font-medium">{pair.left}</span>
           <select
-            value={chosen.get(pair.left) ?? ""}
-            onChange={(e) => set(pair.left, e.target.value)}
-            className="rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)] focus:ring-[var(--brand)]"
+            aria-label={`Match for ${pair.left}`}
+            value={chosen[row] ?? ""}
+            onChange={(e) => set(row, e.target.value)}
+            className="rounded-xl border border-[var(--border)] bg-[#131a33] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--brand)]"
           >
             <option value="">Choose…</option>
             {meanings.map((m) => (
@@ -267,6 +269,21 @@ function MatchingInput({
       ))}
     </div>
   );
+}
+
+// "0=Can be switched on and off" per line. Older answers used the term's text
+// as the key, so those are still read back by matching the term.
+function parseMatchingAnswer(value: string, rowCount: number): (string | undefined)[] {
+  const rows = new Array<string | undefined>(rowCount);
+  for (const line of value.split("\n")) {
+    const at = line.indexOf("=");
+    if (at < 0) continue;
+    const key = line.slice(0, at);
+    const right = line.slice(at + 1);
+    const index = Number(key);
+    if (Number.isInteger(index) && index >= 0 && index < rowCount) rows[index] = right;
+  }
+  return rows;
 }
 
 // Shows the expected ANSWER FORMAT (value + unit + direction) using an

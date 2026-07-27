@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
 :root {
+  /* The app is dark, so the browser's own controls must be told that too.
+     Without this the native <select> popup, scrollbars and form widgets are
+     drawn from the light OS palette — a grey menu with near-white text over a
+     dark page, which is how the practice zone's matching dropdown ended up
+     unreadable. One declaration fixes every native control at once. */
+  color-scheme: dark;
   --bg: #0b1020;
   --bg-2: #0e1530;
   --surface: rgba(255, 255, 255, 0.06);

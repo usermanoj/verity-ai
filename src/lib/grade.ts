@@ -218,13 +218,31 @@ export function gradeFill(q: FillBlankQuestion, answer: string): GradeResult {
 // The answer is the student's pairing, serialised as "left=right" per line, so
 // grading stays deterministic and needs no model call.
 export function gradeMatching(q: MatchingQuestion, answer: string): GradeResult {
-  const given = new Map<string, string>();
+  // Answers are keyed by ROW index, because a question may legitimately
+  // repeat a term — "Electromagnet / Permanent magnet / Electromagnet /
+  // Permanent magnet", one row per property. Keying by the term's text
+  // collapsed those rows into one another, so four answers graded as two.
+  //
+  // A key that isn't a row number is read as the term itself, which keeps
+  // answers recorded before the change gradeable.
+  const byRow = new Array<string | undefined>(q.pairs.length);
+  const byLeft = new Map<string, string>();
+
   for (const line of (answer || "").split("\n")) {
-    const [left, right] = line.split("=");
-    if (left && right) given.set(normaliseText(left), normaliseText(right));
+    const at = line.indexOf("=");
+    if (at < 0) continue;
+    const key = line.slice(0, at);
+    const right = normaliseText(line.slice(at + 1));
+    if (!right) continue;
+
+    const index = Number(key);
+    if (Number.isInteger(index) && index >= 0 && index < q.pairs.length) byRow[index] = right;
+    else byLeft.set(normaliseText(key), right);
   }
 
-  const rightCount = q.pairs.filter((p) => given.get(normaliseText(p.left)) === normaliseText(p.right)).length;
+  const rightCount = q.pairs.filter(
+    (p, i) => (byRow[i] ?? byLeft.get(normaliseText(p.left))) === normaliseText(p.right),
+  ).length;
   const correct = rightCount === q.pairs.length;
   return {
     correct,
