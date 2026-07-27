@@ -36,6 +36,13 @@ const TARGET_LONG_EDGE = 1400;
 // these, and every page kept is storage paid for every month afterwards.
 const MAX_PAGES = 40;
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("render timed out")), ms)),
+  ]);
+}
+
 export async function extractPdfInBrowser(
   data: Uint8Array,
 ): Promise<{ pages: ExtractedPage[]; rendered: RenderedPage[] }> {
@@ -52,6 +59,7 @@ export async function extractPdfInBrowser(
 
   const pages: ExtractedPage[] = [];
   const rendered: RenderedPage[] = [];
+  let stillRendering = true;
 
   const pageCount = Math.min(pdf.numPages, MAX_PAGES);
   for (let n = 1; n <= pageCount; n++) {
@@ -63,8 +71,20 @@ export async function extractPdfInBrowser(
     if (!text.trim()) continue;
     pages.push({ pageOrSection: pages.length + 1, text });
 
-    const image = await renderPage(pdf, n, pages.length);
-    if (image) rendered.push(image);
+    if (stillRendering) {
+      const image = await renderPage(pdf, n, pages.length);
+      if (image) {
+        rendered.push(image);
+      } else {
+        // The first failure stops the rest. Rendering fails for one reason in
+        // practice — the tab is in the background, so rAF never fires — and
+        // that reason applies to every remaining page. Trying them all anyway
+        // would spend forty timeouts, thirteen minutes, to learn the same
+        // thing. The text is already extracted, so the upload continues and
+        // simply arrives without pictures of the slides.
+        stillRendering = false;
+      }
+    }
   }
 
   return { pages, rendered };
@@ -81,31 +101,52 @@ async function renderPage(
     const scale = TARGET_LONG_EDGE / Math.max(base.width, base.height);
     const viewport = page.getViewport({ scale: Math.min(scale, 3) });
 
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(viewport.width);
-    canvas.height = Math.round(viewport.height);
-    const context = canvas.getContext("2d");
+    const width = Math.round(viewport.width);
+    const height = Math.round(viewport.height);
+
+    // OffscreenCanvas where available: no DOM node to attach, detach and
+    // garbage-collect forty times over.
+    //
+    // It does NOT solve the hidden-tab problem, which is worth stating
+    // plainly because it looks like it should. pdf.js schedules its rendering
+    // continuations with requestAnimationFrame whenever `window` exists,
+    // regardless of canvas type, and rAF does not fire in a backgrounded tab.
+    // Measured directly: with document.hidden true, rAF never fires and
+    // page.render() never resolves, while extractText on the same document
+    // returns normally. The timeout below is what actually handles it.
+    const canvas: OffscreenCanvas | HTMLCanvasElement =
+      typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(width, height) : document.createElement("canvas");
+    if (!(canvas instanceof OffscreenCanvas)) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    const context = canvas.getContext("2d") as
+      | OffscreenCanvasRenderingContext2D
+      | CanvasRenderingContext2D
+      | null;
     if (!context) return null;
 
     // Slides are designed on white. Without this the transparent areas of the
     // page render black, and a JPEG cannot carry transparency anyway.
     context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillRect(0, 0, width, height);
 
-    await page.render({ canvas, canvasContext: context, viewport }).promise;
+    // A per-page ceiling regardless: one pathological page should cost its own
+    // picture, not the teacher's upload.
+    await withTimeout(
+      page.render({ canvas, canvasContext: context, viewport } as Parameters<typeof page.render>[0]).promise,
+      20_000,
+    );
 
     // JPEG, not PNG: a rendered slide is a photograph-like image where PNG's
     // lossless encoding costs several times the bytes for no visible gain.
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.82),
-    );
-    // Free the backing store immediately — forty slide-sized canvases held at
-    // once is enough to be noticed on an iPad.
-    canvas.width = 0;
-    canvas.height = 0;
-    if (!blob) return null;
+    const blob =
+      canvas instanceof OffscreenCanvas
+        ? await canvas.convertToBlob({ type: "image/jpeg", quality: 0.82 })
+        : await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
 
-    return { pageOrSection, blob, width: canvas.width || Math.round(viewport.width), height: Math.round(viewport.height) };
+    return blob ? { pageOrSection, blob, width, height } : null;
   } catch {
     // One unrenderable page costs its own picture, not the upload.
     return null;

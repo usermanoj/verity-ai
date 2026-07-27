@@ -3,7 +3,7 @@ import { hasSupabaseAdmin, supabaseAdmin } from "@/lib/supabase/admin";
 import { createSignedReadUrls } from "@/lib/supabase/storage";
 
 // A diagram lifted from the teacher's own deck, ready to render.
-export type TopicMedia = { url: string; width?: number; height?: number };
+export type TopicMedia = { url: string; width?: number; height?: number; kind: "figure" | "slide" };
 
 // A data table lifted from the source deck, kept as a grid.
 export type TopicTable = { headers: string[]; rows: string[][] };
@@ -184,7 +184,7 @@ class PostgresContentRepository implements ContentRepository {
 
     const { data } = await supabaseAdmin()
       .from("corpus_document_media")
-      .select("page_or_section, storage_path, width, height")
+      .select("page_or_section, storage_path, width, height, kind")
       .eq("document_id", topicId)
       .order("page_or_section", { ascending: true });
     if (!data || data.length === 0) return byPage;
@@ -194,7 +194,7 @@ class PostgresContentRepository implements ContentRepository {
       const url = urls.get(m.storage_path);
       if (!url) continue;
       const list = byPage.get(m.page_or_section) ?? [];
-      list.push({ url, width: m.width ?? undefined, height: m.height ?? undefined });
+      list.push({ url, width: m.width ?? undefined, height: m.height ?? undefined, kind: m.kind ?? "figure" });
       byPage.set(m.page_or_section, list);
     }
     return byPage;
