@@ -32,17 +32,25 @@ export default function LessonNav({ headings }: { headings: { id: string; title:
     return () => observer.disconnect();
   }, [headings]);
 
-  // Keep the active chip in view on a rail that scrolls sideways.
+  // Keep the active chip in view on a rail that scrolls sideways — by moving
+  // the rail's own scrollLeft, never scrollIntoView.
+  //
+  // scrollIntoView scrolls every scrollable ancestor, including the document.
+  // Once the reader had scrolled past this rail, each new active section
+  // dragged the page back up to it, so the lesson could not be scrolled at
+  // all: the nav fought the reader for control of the page.
   useEffect(() => {
-    railRef.current?.querySelector<HTMLElement>(`[data-for="${activeId}"]`)?.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "nearest",
-    });
+    const rail = railRef.current;
+    const chip = rail?.querySelector<HTMLElement>(`[data-for="${activeId}"]`);
+    if (!rail || !chip) return;
+    rail.scrollTo({ left: chip.offsetLeft - rail.clientWidth / 2 + chip.clientWidth / 2, behavior: "smooth" });
   }, [activeId]);
 
   return (
-    <nav aria-label="Lesson contents" className="mt-6">
+    <nav
+      aria-label="Lesson contents"
+      className="sticky top-0 z-20 -mx-6 mt-6 border-b border-[var(--border)] bg-[rgba(10,12,24,0.72)] px-6 pt-4 backdrop-blur-xl"
+    >
       <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--muted)]">In this lesson</div>
       <div ref={railRef} className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {headings.map((h, i) => {
