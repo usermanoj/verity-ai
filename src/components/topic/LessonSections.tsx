@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import ReadingText from "@/components/reading/ReadingText";
+import ConceptVisual, { visualFor } from "./visuals/ConceptVisual";
 import type { CorpusChunk } from "@/data/corpus";
 
 // Turns approved material into a designed lesson.
@@ -33,6 +34,9 @@ function Section({ chunk, index }: { chunk: CorpusChunk; index: number }) {
   const heading = chunk.heading?.trim() || "Section";
   const body = chunk.text.trim() === heading ? "" : chunk.text;
   const view = body ? classify(body) : { kind: "empty" as const };
+  // Matched against the section's own words, so the illustration always
+  // demonstrates a claim the teacher approved rather than decorating.
+  const visual = body ? visualFor(heading, body) : null;
 
   return (
     <motion.section
@@ -65,6 +69,8 @@ function Section({ chunk, index }: { chunk: CorpusChunk; index: number }) {
         </div>
       )}
       {view.kind === "prose" && <ReadingText text={view.text} />}
+
+      {visual && <ConceptVisual kind={visual} />}
     </motion.section>
   );
 }
