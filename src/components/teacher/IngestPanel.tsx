@@ -78,6 +78,52 @@ function statusRank(doc: Doc): number {
 // succeed. Reads the body once as text, since a failed .json() call already
 // consumes the body and a second .text() call would throw. Also reports the
 // byte size, which is what makes a slow load diagnosable.
+type MediaManifestEntry = { pageOrSection: number; storagePath: string; width: number; height: number };
+
+// Uploads the diagrams pulled out of a deck and returns what actually landed.
+//
+// Best-effort throughout: a lesson without its pictures is still a lesson,
+// whereas failing the upload over one unreadable image would cost the teacher
+// the whole deck. Anything that doesn't upload is simply left out of the
+// manifest, so no row is ever written for bytes that aren't in Storage.
+async function uploadExtractedMedia(
+  documentId: string,
+  media: { pageOrSection: number; sourcePath: string; extension: string; bytes: Uint8Array; width: number; height: number }[],
+): Promise<MediaManifestEntry[]> {
+  if (media.length === 0) return [];
+
+  // Names are ours, not the deck's: an image inside a .pptx can be named
+  // anything, and the server only signs paths matching a strict pattern.
+  const named = media.map((m, i) => ({ ...m, name: `slide-${m.pageOrSection}-${i}.${m.extension}` }));
+
+  const res = await fetch("/api/ingest/media-init", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      documentId,
+      files: named.map((m) => ({ name: m.name, size: m.bytes.byteLength })),
+    }),
+  });
+  if (!res.ok) return [];
+
+  const { data } = await safeJson(res);
+  const targets = (data.files as { name: string; path: string; signedUrl: string }[] | undefined) ?? [];
+  const byName = new Map(targets.map((t) => [t.name, t]));
+
+  const uploaded = await Promise.all(
+    named.map(async (m): Promise<MediaManifestEntry | null> => {
+      const target = byName.get(m.name);
+      if (!target) return null;
+      const blob = new Blob([m.bytes as BlobPart], { type: `image/${m.extension === "jpg" ? "jpeg" : m.extension}` });
+      const err = await putToSignedUrl(target.signedUrl, new File([blob], m.name), () => {});
+      if (err) return null;
+      return { pageOrSection: m.pageOrSection, storagePath: target.path, width: m.width, height: m.height };
+    }),
+  );
+
+  return uploaded.filter((m): m is MediaManifestEntry => m !== null);
+}
+
 async function safeJson(res: Response): Promise<{
   data: { error?: string; [key: string]: unknown };
   bytes: number;
@@ -451,10 +497,16 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           // fflate is imported lazily so it only loads for a teacher who
           // actually uploads a slide deck, not on every page view.
           let extractedPages: { pageOrSection: number; text: string }[] | undefined;
+          let uploadedMedia: MediaManifestEntry[] = [];
           if (file.name.split(".").pop()?.toLowerCase() === "pptx") {
             try {
-              const { extractPptxPages } = await import("@/lib/ingestion/pptx");
-              extractedPages = extractPptxPages(new Uint8Array(await file.arrayBuffer()));
+              const { extractPptx } = await import("@/lib/ingestion/pptx");
+              const { pages, media } = extractPptx(new Uint8Array(await file.arrayBuffer()));
+              extractedPages = pages;
+              // The deck's own diagrams. Same browser-side reasoning as the
+              // text: the bytes are already here, so the server never has to
+              // pull the file back out of Storage to find them.
+              uploadedMedia = await uploadExtractedMedia(target.documentId, media);
             } catch {
               // Any parsing trouble just falls back to the server path.
               extractedPages = undefined;
@@ -469,6 +521,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
               documentId: target.documentId,
               storagePath: target.path,
               pages: extractedPages,
+              media: uploadedMedia,
             }),
           });
           processMs = Math.max(processMs, Math.round(performance.now() - tProcess));

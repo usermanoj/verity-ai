@@ -23,9 +23,10 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
   const topic = await contentRepo.getTopic(topicId);
   if (!topic) notFound();
 
-  const [chunks, bank] = await Promise.all([
+  const [chunks, bank, media] = await Promise.all([
     contentRepo.getCorpusForTopic(topicId),
     contentRepo.getPracticeBank(topicId),
+    contentRepo.getMediaForTopic(topicId),
   ]);
 
   // Provenance belongs once, at the top. It used to sit under every paragraph
@@ -80,7 +81,9 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.15fr_1fr]">
         <div className="space-y-6">
-          <LessonSections chunks={chunks} />
+          {/* A Map can't cross the server/client boundary, so it goes over as
+              a plain object keyed by page number. */}
+          <LessonSections chunks={chunks} mediaByPage={Object.fromEntries(media)} />
 
           {bank.length > 0 ? (
             <PracticeZone key={topicId} bank={bank} />
