@@ -158,6 +158,9 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   // Filenames that already exist, awaiting the teacher's replace/keep-both
   // decision. The original FormData is held alongside so the same batch —
   // same files, same sections — is retried rather than rebuilt.
+  // Which document is mid "approve all questions", so its button reports the
+  // pending state instead of sitting inert.
+  const [approvingAllId, setApprovingAllId] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<UploadConflict[]>([]);
   const pendingFormRef = useRef<FormData | null>(null);
   // Re-entry guard read synchronously; `uploading` state can be stale inside
@@ -510,6 +513,29 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
     }
   }
 
+  async function approveAllQuestions(documentId: string) {
+    if (approvingAllId) return;
+    setApprovingAllId(documentId);
+    setError(null);
+    setNotice("Publishing questions to your students…");
+    try {
+      const res = await fetch("/api/questions/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId, approveAll: true }),
+      });
+      const { data } = await safeJson(res);
+      if (!res.ok) throw new Error((data.error as string | undefined) || "Could not publish the questions.");
+      const count = (data.approved as number | undefined) ?? 0;
+      setNotice(`✓ ${count} question${count === 1 ? "" : "s"} published — students can practise with them now.`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not publish the questions.");
+    } finally {
+      setApprovingAllId(null);
+    }
+  }
+
   async function review(documentId: string, approved: boolean) {
     // Acknowledge on the control the teacher actually clicked — the top-of-
     // page notice alone isn't enough, since a document lower down the list
@@ -760,6 +786,36 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
               <p className="mt-2 text-xs text-[var(--muted)]">
                 ✓ Uploaded — now extracting &amp; chunking in the background. This updates automatically.
               </p>
+            )}
+
+            {/* Questions are generated once a document is approved, which is
+                after the teacher has finished with this card — so without
+                this banner they were written, left pending, and never seen.
+                Students only ever get 'approved' questions, so every deck
+                reached them with an empty practice zone. */}
+            {doc.pendingQuestionCount > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-4 py-3">
+                <span className="text-sm">
+                  🎯 <strong>{doc.pendingQuestionCount}</strong> practice question
+                  {doc.pendingQuestionCount === 1 ? "" : "s"} ready for your approval — students see none until you
+                  release them.
+                </span>
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    onClick={() => approveAllQuestions(doc.id)}
+                    disabled={approvingAllId === doc.id}
+                    className={`rounded-xl bg-[var(--brand)] px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 ${PRESSABLE}`}
+                  >
+                    {approvingAllId === doc.id ? "Publishing…" : "Approve all"}
+                  </button>
+                  <button
+                    onClick={() => toggleOpen(doc.id)}
+                    className={`rounded-xl border border-[var(--border)] px-3 py-1.5 text-xs ${PRESSABLE}`}
+                  >
+                    Review one by one
+                  </button>
+                </div>
+              </div>
             )}
 
             {open && chunksLoadingId === doc.id && doc.chunks.length === 0 && (

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -67,10 +67,18 @@ export async function POST(req: NextRequest) {
     //
     // They're written as `pending`, so the human-approval guarantee is
     // untouched: nothing reaches a student until the teacher ticks it.
-    // Fire-and-forget — the teacher's Approve click must not wait on model
-    // calls, and a failure here leaves the (already approved) material
-    // perfectly usable, just without generated questions yet.
-    void generateQuestionsForDocument(documentId, user.id);
+    //
+    // after() rather than a bare `void`: the teacher's Approve click must not
+    // wait on forty model calls, but a floating promise is not a background
+    // job. Once the response is sent the serverless invocation can be frozen
+    // or torn down, so the generation was being killed part-way through — or
+    // never starting — which is why decks finished approval with no questions
+    // at all. after() is the platform's own contract for work that outlives
+    // the response, and it keeps the invocation alive until this settles.
+    //
+    // A failure here still leaves the (already approved) material perfectly
+    // usable, just without generated questions yet.
+    after(() => generateQuestionsForDocument(documentId, user.id));
   } else {
     // Rejected chunks shouldn't linger as if they might still be used.
     await admin.from("corpus_chunks").delete().eq("document_id", documentId);
