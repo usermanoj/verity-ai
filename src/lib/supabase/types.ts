@@ -213,6 +213,36 @@ export type Database = {
         };
         Relationships: [];
       };
+      corpus_document_media: {
+        Row: {
+          id: string;
+          document_id: string;
+          page_or_section: number;
+          storage_path: string;
+          width: number | null;
+          height: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          document_id: string;
+          page_or_section: number;
+          storage_path: string;
+          width?: number | null;
+          height?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          document_id?: string;
+          page_or_section?: number;
+          storage_path?: string;
+          width?: number | null;
+          height?: number | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       corpus_chunks: {
         Row: {
           id: string;

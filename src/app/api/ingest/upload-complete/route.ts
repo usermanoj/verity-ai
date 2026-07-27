@@ -24,10 +24,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Only signed-in teachers can complete uploads." }, { status: 403 });
   }
 
-  const { documentId, storagePath, pages } = (await req.json().catch(() => ({}))) as {
+  const { documentId, storagePath, pages, media } = (await req.json().catch(() => ({}))) as {
     documentId?: string;
     storagePath?: string;
     pages?: { pageOrSection: number; text: string }[];
+    media?: { pageOrSection: number; storagePath: string; width: number; height: number }[];
   };
   if (!documentId || !storagePath) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -57,6 +58,35 @@ export async function POST(req: NextRequest) {
         )
         .slice(0, 2000)
     : undefined;
+
+  // Diagrams the browser pulled out of the same .pptx, already uploaded to
+  // Storage under this document's prefix. Recorded before chunking so they're
+  // present the moment the teacher reviews.
+  //
+  // Every row is pinned to this document's prefix regardless of what the
+  // client sent: the paths are otherwise client-supplied, and a row pointing
+  // at another document's storage would leak one class's material into
+  // another's lesson.
+  if (Array.isArray(media) && media.length > 0) {
+    const rows = media
+      .filter(
+        (m) =>
+          m &&
+          typeof m.pageOrSection === "number" &&
+          typeof m.storagePath === "string" &&
+          m.storagePath.startsWith(`${documentId}/media/`),
+      )
+      .slice(0, 40)
+      .map((m) => ({
+        document_id: documentId,
+        page_or_section: m.pageOrSection,
+        storage_path: m.storagePath,
+        width: typeof m.width === "number" ? m.width : null,
+        height: typeof m.height === "number" ? m.height : null,
+      }));
+    // A failure here costs the lesson its pictures, not its text.
+    if (rows.length > 0) await supabaseAdmin().from("corpus_document_media").insert(rows);
+  }
 
   // Route on whether the text is ALREADY extracted, not on file format.
   //

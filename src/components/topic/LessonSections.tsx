@@ -20,23 +20,41 @@ import type { CorpusChunk } from "@/data/corpus";
 // text. Anything unrecognised falls back to prose, so the failure mode is
 // "looks plain", never "shows something the teacher didn't approve".
 
-export default function LessonSections({ chunks }: { chunks: CorpusChunk[] }) {
+export type SectionMedia = { url: string; width?: number; height?: number };
+
+export default function LessonSections({
+  chunks,
+  mediaByPage = {},
+}: {
+  chunks: CorpusChunk[];
+  mediaByPage?: Record<number, SectionMedia[]>;
+}) {
   return (
     <div className="space-y-5">
       {chunks.map((c, i) => (
-        <Section key={c.id} chunk={c} index={i} />
+        <Section key={c.id} chunk={c} index={i} media={mediaByPage[pageOf(c.source)] ?? []} />
       ))}
     </div>
   );
 }
 
-function Section({ chunk, index }: { chunk: CorpusChunk; index: number }) {
+// The page number a chunk came from lives only in its citation string.
+function pageOf(source: string): number {
+  const match = /Page\/Section\s+(\d+)\s*$/.exec(source);
+  return match ? Number(match[1]) : -1;
+}
+
+function Section({ chunk, index, media }: { chunk: CorpusChunk; index: number; media: SectionMedia[] }) {
   const heading = chunk.heading?.trim() || "Section";
   const body = chunk.text.trim() === heading ? "" : chunk.text;
   const view = body ? classify(body) : { kind: "empty" as const };
   // Matched against the section's own words, so the illustration always
   // demonstrates a claim the teacher approved rather than decorating.
-  const visual = body ? visualFor(heading, body) : null;
+  //
+  // A diagram from the deck itself always wins: the teacher drew or chose it
+  // for this syllabus and students saw it in class, which a generic
+  // interactive cannot match. Ours fills the gaps rather than competing.
+  const visual = body && media.length === 0 ? visualFor(heading, body) : null;
 
   return (
     <motion.section
@@ -69,6 +87,35 @@ function Section({ chunk, index }: { chunk: CorpusChunk; index: number }) {
         </div>
       )}
       {view.kind === "prose" && <ReadingText text={view.text} />}
+
+      {media.length > 0 && (
+        <div className={`mt-4 grid gap-3 ${media.length > 1 ? "sm:grid-cols-2" : ""}`}>
+          {media.map((m) => (
+            <motion.figure
+              key={m.url}
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4 }}
+              className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white/95 p-2"
+            >
+              {/* Plain <img>: these are signed, short-lived Storage URLs on a
+                  host next/image would have to be configured to allow, and
+                  the signature changes per request so an optimiser cache
+                  would miss every time. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={m.url}
+                alt={`Diagram from ${heading}`}
+                width={m.width}
+                height={m.height}
+                loading="lazy"
+                className="mx-auto h-auto max-h-80 w-auto max-w-full rounded-lg"
+              />
+            </motion.figure>
+          ))}
+        </div>
+      )}
 
       {visual && <ConceptVisual kind={visual} />}
     </motion.section>

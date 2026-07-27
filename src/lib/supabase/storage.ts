@@ -30,6 +30,26 @@ export async function createSignedUploadUrl(
   return { path: data.path, token: data.token, signedUrl: data.signedUrl };
 }
 
+// Read URLs for diagrams lifted out of a deck. The bucket stays private —
+// school material must not be fetchable by guessing a path — so students get
+// a short-lived signed link minted per request, after the server has checked
+// the document is approved.
+export async function createSignedReadUrls(paths: string[], expiresInSeconds = 3600): Promise<Map<string, string>> {
+  if (paths.length === 0) return new Map();
+  const { data, error } = await supabaseAdmin()
+    .storage.from(CORPUS_BUCKET)
+    .createSignedUrls(paths, expiresInSeconds);
+  if (error) throw error;
+
+  const byPath = new Map<string, string>();
+  for (const entry of data ?? []) {
+    // createSignedUrls reports per-file failures inline rather than throwing;
+    // a missing image should cost that one diagram, not the whole lesson.
+    if (entry.signedUrl && entry.path) byPath.set(entry.path, entry.signedUrl);
+  }
+  return byPath;
+}
+
 export async function downloadCorpusFile(path: string): Promise<Buffer> {
   const { data, error } = await supabaseAdmin().storage.from(CORPUS_BUCKET).download(path);
   if (error) throw error;
