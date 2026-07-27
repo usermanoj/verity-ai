@@ -1,6 +1,6 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { MODEL, GATEWAY_FALLBACK_MODELS } from "@/lib/ai";
+import { MODEL, GATEWAY_FALLBACK_MODELS, withRateLimitRetry } from "@/lib/ai";
 import type { Question } from "@/lib/grade";
 
 const QuestionSchema = z.discriminatedUnion("kind", [
@@ -78,13 +78,15 @@ const SYSTEM_PROMPT = [
 // negotiable). The deterministic grader in lib/grade.ts never changes —
 // this only produces more Question objects for it to grade.
 export async function generatePracticeQuestions(chunkHeading: string | null, chunkText: string): Promise<GeneratedQuestion[]> {
-  const { output } = await generateText({
+  const { output } = await withRateLimitRetry(() =>
+    generateText({
     model: MODEL,
     system: SYSTEM_PROMPT,
     prompt: `Approved material${chunkHeading ? ` ("${chunkHeading}")` : ""}:\n${chunkText}`,
     output: Output.object({ schema: z.object({ questions: z.array(GeneratedQuestionSchema) }) }),
-    providerOptions: { gateway: { models: GATEWAY_FALLBACK_MODELS } },
-  });
+      providerOptions: { gateway: { models: GATEWAY_FALLBACK_MODELS } },
+    }),
+  );
 
   return output.questions;
 }

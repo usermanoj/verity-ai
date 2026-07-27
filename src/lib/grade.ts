@@ -18,7 +18,9 @@ export type McqQuestion = {
   // blank text box with nothing to choose from — unanswerable, and marked
   // wrong whatever they typed. Optional because the hand-authored demo banks
   // spell their options out inside the prompt text.
-  options?: string[];
+  // readonly so a caller can pass an `as const` literal — the grader only
+  // ever reads these.
+  options?: readonly string[];
 };
 
 export type TrueFalseQuestion = {
@@ -32,12 +34,12 @@ export type FillBlankQuestion = {
   kind: "fill";
   // Every spelling that counts as right. ESL students should not lose a mark
   // to "magnetised" vs "magnetized", or to a stray capital.
-  accept: string[];
+  accept: readonly string[];
 };
 
 export type MatchingQuestion = {
   kind: "matching";
-  pairs: { left: string; right: string }[];
+  pairs: readonly { left: string; right: string }[];
 };
 
 export type Question =

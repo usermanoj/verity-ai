@@ -1,6 +1,6 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { CHUNK_MODEL, GATEWAY_FALLBACK_MODELS } from "@/lib/ai";
+import { CHUNK_MODEL, GATEWAY_FALLBACK_MODELS, mapAiCalls, withRateLimitRetry } from "@/lib/ai";
 import type { ExtractedPage } from "./extract";
 
 const ChunkSchema = z.object({
@@ -50,7 +50,7 @@ const SYSTEM_PROMPT = [
 // Token generation is the bottleneck, not comprehension, so the work splits
 // cleanly across parallel calls: each batch is independent (chunks never span
 // pages, and each carries its own source page number).
-const PAGES_PER_BATCH = 8;
+const PAGES_PER_BATCH = 16;
 
 // Every format goes through the model now.
 //
@@ -80,7 +80,7 @@ export async function chunkExtractedText(sourceFileName: string, pages: Extracte
   // the vocabulary first, and every batch then picks from that fixed list.
   const outline = await deriveOutline(sourceFileName, pages);
 
-  const results = await Promise.all(batches.map((batch) => chunkBatch(sourceFileName, batch, outline)));
+  const results = await mapAiCalls(batches, (batch) => chunkBatch(sourceFileName, batch, outline));
 
   // Restore document order: batches resolve in whatever order they finish,
   // but chunks must stay in reading order for the teacher's review.
@@ -96,7 +96,8 @@ async function deriveOutline(sourceFileName: string, pages: ExtractedPage[]): Pr
     .join("\n");
 
   try {
-    const { output } = await generateText({
+    const { output } = await withRateLimitRetry(() =>
+      generateText({
       model: CHUNK_MODEL,
       system: [
         "You are outlining a lesson from the titles of a teacher's slides.",
@@ -107,7 +108,8 @@ async function deriveOutline(sourceFileName: string, pages: ExtractedPage[]): Pr
       prompt: `Source file: ${sourceFileName}\n\nSlide openings:\n${openings}`,
       output: Output.object({ schema: z.object({ modules: z.array(z.string()).min(1).max(10) }) }),
       providerOptions: { gateway: { models: GATEWAY_FALLBACK_MODELS } },
-    });
+      }),
+    );
     return output.modules;
   } catch {
     // Grouping is presentation. If the outline call fails the lesson still
