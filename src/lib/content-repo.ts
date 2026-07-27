@@ -1,4 +1,5 @@
 import { CORPUS, TOPICS, GLOSSARY, type CorpusChunk, type TopicMeta } from "@/data/corpus";
+import { hasSupabaseAdmin, supabaseAdmin } from "@/lib/supabase/admin";
 import { ZH_TRANSLATIONS } from "@/data/translations-zh";
 import { MOMENTS_BANK, DISTANCE_TIME_BANK, type PracticeItem } from "@/data/practice-banks";
 
@@ -53,4 +54,173 @@ class FileContentRepository implements ContentRepository {
   }
 }
 
-export const contentRepo: ContentRepository = new FileContentRepository();
+// Reads the corpus teachers actually uploaded and approved, falling back to
+// the static files for anything it doesn't have.
+//
+// This is the swap the interface above was written for. Until now the whole
+// ingestion pipeline — upload, extract, chunk, approve — wrote into
+// corpus_chunks and NOTHING read it: the tutor was still grounded in the
+// hardcoded hackathon corpus, so approved material never reached a student.
+//
+// Bridging model: one approved document IS a topic. Teachers already think
+// in whole decks ("my Moments lesson"), each chunk already carries a
+// per-document citation, and it needs no extra tagging UI. So topicId is the
+// document's uuid; subject/grade come from its course.
+//
+// The static fallback keeps the two demo topics ("moments", "distance-time")
+// working — their uuid-vs-slug ids can't collide — so the seeded demo still
+// runs alongside real content.
+//
+// Scoping caveat: students aren't authenticated yet, so approved material is
+// exposed by document id rather than by the viewer's enrolment. Once student
+// auth lands, getTopics()/getCorpusForTopic() should filter by the sections
+// the student is actually enrolled in (class_enrollments).
+class PostgresContentRepository implements ContentRepository {
+  private files = new FileContentRepository();
+
+  // The embedded select resolves at runtime through the real foreign keys,
+  // but src/lib/supabase/types.ts is hand-written with `Relationships: []`,
+  // so postgrest-js can't type the nesting. Cast rather than hand-maintain
+  // relationship metadata; DocumentRow below documents the actual shape.
+  private async approvedDocuments(): Promise<DocumentRow[]> {
+    const { data, error } = await supabaseAdmin()
+      .from("corpus_documents")
+      .select("id, source_file, corpus_document_sections(classes(courses(subject, grade)))")
+      .eq("status", "approved")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    return (data ?? []) as unknown as DocumentRow[];
+  }
+
+  async getTopics(): Promise<Record<string, TopicMeta>> {
+    const topics = { ...(await this.files.getTopics()) };
+    for (const doc of await this.approvedDocuments()) {
+      topics[doc.id] = toTopicMeta(doc);
+    }
+    return topics;
+  }
+
+  async getTopic(id: string): Promise<TopicMeta | undefined> {
+    const fromFile = await this.files.getTopic(id);
+    if (fromFile) return fromFile;
+
+    const { data } = await supabaseAdmin()
+      .from("corpus_documents")
+      .select("id, source_file, corpus_document_sections(classes(courses(subject, grade)))")
+      .eq("id", id)
+      .eq("status", "approved")
+      .maybeSingle();
+    return data ? toTopicMeta(data as unknown as DocumentRow) : undefined;
+  }
+
+  async getCorpusForTopic(topicId: string): Promise<CorpusChunk[]> {
+    const fromFile = await this.files.getCorpusForTopic(topicId);
+    if (fromFile.length > 0) return fromFile;
+
+    // approved_at is set on every chunk when the teacher approves the
+    // document, so it doubles as "cleared for students".
+    const { data, error } = await supabaseAdmin()
+      .from("corpus_chunks")
+      .select("id, heading, text, citation")
+      .eq("document_id", topicId)
+      .not("approved_at", "is", null);
+    if (error) throw error;
+    return (data ?? []).map((c) => toCorpusChunk(c, topicId));
+  }
+
+  async getCorpusChunk(id: string): Promise<CorpusChunk | undefined> {
+    const fromFile = await this.files.getCorpusChunk(id);
+    if (fromFile) return fromFile;
+
+    const { data } = await supabaseAdmin()
+      .from("corpus_chunks")
+      .select("id, document_id, heading, text, citation")
+      .eq("id", id)
+      .not("approved_at", "is", null)
+      .maybeSingle();
+    return data ? toCorpusChunk(data, data.document_id) : undefined;
+  }
+
+  // No tables for these yet — the glossary and the reviewed Chinese
+  // translations are still curated files. Uploaded material simply has no
+  // pre-reviewed translation, which the translate route already handles.
+  async getGlossary() {
+    return this.files.getGlossary();
+  }
+  async getTranslation(chunkId: string) {
+    return this.files.getTranslation(chunkId);
+  }
+
+  async getPracticeBank(topicId: string): Promise<PracticeItem[]> {
+    const fromFile = await this.files.getPracticeBank(topicId);
+    if (fromFile.length > 0) return fromFile;
+
+    // Only questions the teacher explicitly approved, and only for chunks of
+    // this document. Their `question` jsonb is already lib/grade.ts's exact
+    // Question union, so the deterministic grader consumes it untouched.
+    const { data: chunks } = await supabaseAdmin()
+      .from("corpus_chunks")
+      .select("id, citation")
+      .eq("document_id", topicId);
+    if (!chunks || chunks.length === 0) return [];
+
+    const citationByChunk = new Map(chunks.map((c) => [c.id, c.citation]));
+    const { data: questions, error } = await supabaseAdmin()
+      .from("generated_questions")
+      .select("id, chunk_id, level, prompt, question")
+      .in(
+        "chunk_id",
+        chunks.map((c) => c.id),
+      )
+      .eq("status", "approved");
+    if (error) throw error;
+
+    return (questions ?? []).map((q) => ({
+      id: q.id,
+      level: q.level,
+      prompt: q.prompt,
+      question: q.question as PracticeItem["question"],
+      source: citationByChunk.get(q.chunk_id) ?? "Approved material",
+    }));
+  }
+}
+
+type DocumentRow = {
+  id: string;
+  source_file: string;
+  corpus_document_sections?: { classes?: { courses?: { subject: string; grade: string } | null } | null }[];
+};
+
+function toTopicMeta(doc: DocumentRow): TopicMeta {
+  const course = doc.corpus_document_sections?.[0]?.classes?.courses;
+  return {
+    id: doc.id,
+    subject: course?.subject ?? "",
+    grade: course?.grade ?? "",
+    // The filename is the teacher's own name for the lesson; strip only the
+    // extension rather than inventing a title.
+    title: doc.source_file.replace(/\.[^.]+$/, ""),
+    objective: "",
+  };
+}
+
+function toCorpusChunk(
+  row: { id: string; heading: string | null; text: string; citation: string },
+  topicId: string,
+): CorpusChunk {
+  return {
+    id: row.id,
+    source: row.citation,
+    sourceType: "slides",
+    topicId,
+    heading: row.heading ?? "",
+    text: row.text,
+  };
+}
+
+// Static-only until Supabase is configured, so local/preview builds without
+// credentials behave exactly as before.
+export const contentRepo: ContentRepository = hasSupabaseAdmin()
+  ? new PostgresContentRepository()
+  : new FileContentRepository();

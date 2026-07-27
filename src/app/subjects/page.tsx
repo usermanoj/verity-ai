@@ -1,4 +1,9 @@
 import Link from "next/link";
+import { contentRepo } from "@/lib/content-repo";
+import { TOPICS as DEMO_TOPICS } from "@/data/corpus";
+
+// Reads whatever teachers have actually approved, so it can't be prerendered.
+export const dynamic = "force-dynamic";
 
 const SUBJECTS = [
   { id: "physics", name: "Physics", icon: "🧲", color: "#22d3ee", topics: 2, ready: true, blurb: "Moments of a Force · Distance–Time Graphs" },
@@ -14,7 +19,13 @@ const TASKS: { subject: string; title: string; due: string; status: string; href
   { subject: "Physics", title: "Distance–Time Graphs", due: "Next week", status: "Not started", href: "/topics/distance-time" },
 ];
 
-export default function Subjects() {
+export default async function Subjects() {
+  // Everything a teacher uploaded and approved. The two seeded demo topics
+  // are filtered out — they already have their own hand-built pages and are
+  // surfaced in the tasks table below.
+  const allTopics = await contentRepo.getTopics();
+  const uploaded = Object.values(allTopics).filter((t) => !(t.id in DEMO_TOPICS));
+
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       <div className="mb-8 flex items-center justify-between">
@@ -49,6 +60,28 @@ export default function Subjects() {
           );
         })}
       </section>
+
+      {uploaded.length > 0 && (
+        <section className="mt-10">
+          <h2 className="mb-3 text-sm font-medium uppercase tracking-widest text-[var(--muted)]">
+            Your class material
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {uploaded.map((t) => (
+              <Link key={t.id} href={`/topics/${t.id}`}>
+                <div className="glass h-full rounded-3xl p-5 transition hover:-translate-y-1 hover:border-[var(--brand)]">
+                  <div className="mb-3 text-2xl">📘</div>
+                  <div className="font-semibold">{t.title}</div>
+                  <div className="mt-0.5 text-xs text-[var(--muted)]">
+                    {[t.subject, t.grade].filter(Boolean).join(" · ") || "Approved material"}
+                  </div>
+                  <div className="mt-3 text-xs text-[var(--brand2)]">open →</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mt-10">
         <h2 className="mb-3 text-sm font-medium uppercase tracking-widest text-[var(--muted)]">This week&apos;s tasks</h2>
