@@ -146,8 +146,16 @@ export async function POST(req: NextRequest) {
       // is a clean upload of the same file.
       await supabaseAdmin().from("corpus_documents").delete().eq("id", documentId);
 
+      // The friendly sentence is what the teacher reads; the provider's own
+      // words still have to reach somebody. Rewriting the message without
+      // keeping the original made the next failure undiagnosable — the reply
+      // said "couldn't read this file" for a cause that had nothing to do
+      // with the file. Logged for the server, and returned as `detail` for
+      // the diagnostics line the ingest page already shows.
+      console.error("ingest failed", { documentId, error: err });
+
       return NextResponse.json(
-        { error: explainIngestFailure(err) },
+        { error: explainIngestFailure(err), detail: technicalDetail(err) },
         { status: 500 },
       );
     }
@@ -177,4 +185,14 @@ function explainIngestFailure(err: unknown): string {
     return "The AI service returned an unusable response. Nothing was saved — please try again.";
   }
   return "Couldn't read this file. Nothing was saved — please check it opens normally and try again.";
+}
+
+// A compact, safe version of the underlying error for the diagnostics line.
+//
+// Truncated because provider errors can carry long payload echoes, and
+// bounded so nothing unexpected ends up rendered at length in a teacher's
+// browser.
+function technicalDetail(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return message.replace(/\s+/g, " ").trim().slice(0, 300);
 }

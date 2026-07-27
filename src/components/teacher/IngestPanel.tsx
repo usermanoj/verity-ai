@@ -472,6 +472,11 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
     let initMs = 0;
     let transferMs = 0;
     let processMs = 0;
+    // The provider's own words for a failure. Kept out of the teacher-facing
+    // banner, which needs a sentence they can act on, and folded into the
+    // diagnostics line instead — losing it entirely is what made the last
+    // failure impossible to diagnose from a screenshot.
+    let ingestDetail: string | null = null;
     try {
       const initRes = await fetch("/api/ingest/upload-init", {
         method: "POST",
@@ -603,6 +608,12 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           processMs = Math.max(processMs, Math.round(performance.now() - tProcess));
           if (!completeRes.ok) {
             const { data: completeData } = await safeJson(completeRes);
+            // The provider's own wording goes to the diagnostics line rather
+            // than the error banner: the teacher needs a sentence they can
+            // act on, but whoever is debugging needs the actual cause, and
+            // burying it entirely is what made the last failure unreadable.
+            const detail = completeData.detail as string | undefined;
+            if (detail) ingestDetail = detail;
             return `"${target.name}": ${(completeData.error as string | undefined) || "failed to start processing"}`;
           }
           return null;
@@ -622,9 +633,12 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
       }
 
       const mb = (totalBytes / 1024 / 1024).toFixed(1);
+      // Appended, not set separately: the timing line below is written after
+      // this loop and would otherwise overwrite the cause.
       setUploadDiag(
         `upload: ${Math.round(performance.now() - tStart)}ms total — authorise ${initMs}ms · ` +
-          `transfer ${transferMs}ms (${mb} MB) · process ${processMs}ms`,
+          `transfer ${transferMs}ms (${mb} MB) · process ${processMs}ms` +
+          (ingestDetail ? ` · cause: ${ingestDetail}` : ""),
       );
 
       // Clear the picked files so a second click can't silently re-upload
