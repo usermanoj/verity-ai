@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import ReadingText from "@/components/reading/ReadingText";
 import ConceptVisual, { assignVisuals, type VisualKind } from "./visuals/ConceptVisual";
+import DataTable, { type SectionTable } from "./DataTable";
 import type { CorpusChunk } from "@/data/corpus";
 
 // Turns approved material into a designed lesson.
@@ -25,11 +26,14 @@ export type SectionMedia = { url: string; width?: number; height?: number };
 export default function LessonSections({
   chunks,
   mediaByPage = {},
+  tablesByPage = {},
 }: {
   chunks: CorpusChunk[];
   mediaByPage?: Record<number, SectionMedia[]>;
+  tablesByPage?: Record<number, SectionTable[]>;
 }) {
   const mediaFor = (c: CorpusChunk) => mediaByPage[pageOf(c.source)] ?? [];
+  const tablesFor = (c: CorpusChunk) => tablesByPage[pageOf(c.source)] ?? [];
 
   // Decided across the whole lesson, not per section: a concept earns its
   // interactive once. Five sections about electromagnets used to render five
@@ -77,7 +81,14 @@ export default function LessonSections({
             </motion.h3>
           )}
           {part.items.map(({ chunk, index }) => (
-            <Section key={chunk.id} chunk={chunk} index={index} media={mediaFor(chunk)} visual={visuals[index]} />
+            <Section
+              key={chunk.id}
+              chunk={chunk}
+              index={index}
+              media={mediaFor(chunk)}
+              tables={tablesFor(chunk)}
+              visual={visuals[index]}
+            />
           ))}
         </div>
       ))}
@@ -95,11 +106,13 @@ function Section({
   chunk,
   index,
   media,
+  tables,
   visual,
 }: {
   chunk: CorpusChunk;
   index: number;
   media: SectionMedia[];
+  tables: SectionTable[];
   visual: VisualKind | null;
 }) {
   const heading = chunk.heading?.trim() || "Section";
@@ -129,7 +142,16 @@ function Section({
         </div>
       </header>
 
-      {view.kind === "table" && <DataTable table={view.table} />}
+      {view.kind === "table" && (
+        <>
+          <DataTable table={{ headers: view.table.headers, rows: view.table.rows }} />
+          {view.table.rest && (
+            <div className="mt-3">
+              <ReadingText text={view.table.rest} />
+            </div>
+          )}
+        </>
+      )}
       {view.kind === "chips" && <ChipList items={view.items} lead={view.lead} />}
       {view.kind === "definition" && (
         <div className="rounded-2xl border-l-2 border-[var(--brand2)] bg-[rgba(34,211,238,0.07)] py-3 pl-4 pr-3">
@@ -166,6 +188,10 @@ function Section({
           ))}
         </div>
       )}
+
+      {tables.map((t, i) => (
+        <DataTable key={i} table={t} />
+      ))}
 
       {visual && <ConceptVisual kind={visual} />}
     </motion.section>
@@ -273,69 +299,6 @@ function ChipList({ items, lead }: { items: string[]; lead: string }) {
 
 export type DetectedTable = { headers: string[]; rows: string[][]; rest: string };
 
-function DataTable({ table }: { table: DetectedTable }) {
-  const values = table.rows.map((r) => Number(r[1]));
-  const max = Math.max(...values, 0);
-  const min = Math.min(...values, 0);
-  const span = max - min || 1;
-
-  return (
-    <div className="space-y-4">
-      <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[var(--border)] bg-[rgba(255,255,255,0.03)] text-left text-xs uppercase tracking-wide text-[var(--muted)]">
-              {table.headers.map((h, i) => (
-                <th key={i} className="px-4 py-2.5 font-medium">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {table.rows.map((row, i) => (
-              <tr key={i} className="border-b border-[var(--border)] last:border-0">
-                {row.map((cell, j) => (
-                  <td key={j} className="px-4 py-2 tabular-nums">
-                    {cell}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* The numbers are the teacher's; the bars are just a second reading of
-          them. Seeing "flat" or "rising" is most of what a data table on a
-          slide is trying to teach. */}
-      <div className="rounded-2xl border border-[var(--border)] p-4">
-        <div className="mb-2 text-xs uppercase tracking-wide text-[var(--muted)]">{table.headers[1]}</div>
-        <div className="flex h-28 items-end gap-1.5">
-          {table.rows.map((row, i) => (
-            <motion.div
-              key={i}
-              initial={{ height: 0 }}
-              whileInView={{ height: `${((Number(row[1]) - min) / span) * 85 + 15}%` }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: Math.min(i, 12) * 0.04, ease: "easeOut" }}
-              className="flex-1 rounded-t-md bg-gradient-to-t from-[var(--brand)] to-[var(--brand2)]"
-              title={`${row[0]} → ${row[1]}`}
-            />
-          ))}
-        </div>
-        <div className="mt-2 flex justify-between text-[11px] text-[var(--muted)]">
-          <span>
-            {table.headers[0]}: {table.rows[0]?.[0]}
-          </span>
-          <span>{table.rows[table.rows.length - 1]?.[0]}</span>
-        </div>
-      </div>
-
-      {table.rest && <ReadingText text={table.rest} />}
-    </div>
-  );
-}
 
 // Looks for the flattened "<label> <label> <n> <n> <n> <n>…" shape a
 // PowerPoint data table collapses into. Conservative on purpose: anything it

@@ -4,6 +4,9 @@ import { createSignedReadUrls } from "@/lib/supabase/storage";
 
 // A diagram lifted from the teacher's own deck, ready to render.
 export type TopicMedia = { url: string; width?: number; height?: number };
+
+// A data table lifted from the source deck, kept as a grid.
+export type TopicTable = { headers: string[]; rows: string[][] };
 import { ZH_TRANSLATIONS } from "@/data/translations-zh";
 import { MOMENTS_BANK, DISTANCE_TIME_BANK, type PracticeItem } from "@/data/practice-banks";
 
@@ -28,6 +31,8 @@ export interface ContentRepository {
   getCorpusForTopic(topicId: string): Promise<CorpusChunk[]>;
   /** Diagrams from the source document, keyed by page/section number. */
   getMediaForTopic(topicId: string): Promise<Map<number, TopicMedia[]>>;
+  /** Data tables from the source document, keyed by page/section number. */
+  getTablesForTopic(topicId: string): Promise<Map<number, TopicTable[]>>;
   getCorpusChunk(id: string): Promise<CorpusChunk | undefined>;
   getGlossary(): Promise<Record<string, { en: string; zh: string }>>;
   getTranslation(chunkId: string): Promise<string | undefined>;
@@ -47,6 +52,9 @@ class FileContentRepository implements ContentRepository {
   // The two demo topics carry hand-built interactive visuals instead of
   // extracted diagrams, so there is nothing to look up here.
   async getMediaForTopic(): Promise<Map<number, TopicMedia[]>> {
+    return new Map();
+  }
+  async getTablesForTopic(): Promise<Map<number, TopicTable[]>> {
     return new Map();
   }
   async getCorpusChunk(id: string): Promise<CorpusChunk | undefined> {
@@ -188,6 +196,25 @@ class PostgresContentRepository implements ContentRepository {
       const list = byPage.get(m.page_or_section) ?? [];
       list.push({ url, width: m.width ?? undefined, height: m.height ?? undefined });
       byPage.set(m.page_or_section, list);
+    }
+    return byPage;
+  }
+
+  // Data tables from the deck, keyed by the page their slide became. No
+  // signing needed — unlike diagrams these are rows of text, so they travel
+  // with the page itself.
+  async getTablesForTopic(topicId: string): Promise<Map<number, TopicTable[]>> {
+    const byPage = new Map<number, TopicTable[]>();
+    const { data } = await supabaseAdmin()
+      .from("corpus_document_tables")
+      .select("page_or_section, headers, rows")
+      .eq("document_id", topicId)
+      .order("page_or_section", { ascending: true });
+
+    for (const t of data ?? []) {
+      const list = byPage.get(t.page_or_section) ?? [];
+      list.push({ headers: t.headers as string[], rows: t.rows as string[][] });
+      byPage.set(t.page_or_section, list);
     }
     return byPage;
   }

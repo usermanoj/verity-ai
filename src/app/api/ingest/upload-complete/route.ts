@@ -24,11 +24,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Only signed-in teachers can complete uploads." }, { status: 403 });
   }
 
-  const { documentId, storagePath, pages, media } = (await req.json().catch(() => ({}))) as {
+  const { documentId, storagePath, pages, media, tables } = (await req.json().catch(() => ({}))) as {
     documentId?: string;
     storagePath?: string;
     pages?: { pageOrSection: number; text: string }[];
     media?: { pageOrSection: number; storagePath: string; width: number; height: number }[];
+    tables?: { pageOrSection: number; headers: string[]; rows: string[][] }[];
   };
   if (!documentId || !storagePath) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -86,6 +87,31 @@ export async function POST(req: NextRequest) {
       }));
     // A failure here costs the lesson its pictures, not its text.
     if (rows.length > 0) await supabaseAdmin().from("corpus_document_media").insert(rows);
+  }
+
+  // Data tables lifted from the same deck. Bounded on every axis because the
+  // shape is client-supplied: a crafted request should cost one rejected row,
+  // not a lesson page rendering a thousand-column grid.
+  if (Array.isArray(tables) && tables.length > 0) {
+    const rows = tables
+      .filter(
+        (t) =>
+          t &&
+          typeof t.pageOrSection === "number" &&
+          Array.isArray(t.headers) &&
+          Array.isArray(t.rows) &&
+          t.headers.length >= 2 &&
+          t.headers.length <= 8 &&
+          t.rows.length <= 60,
+      )
+      .slice(0, 20)
+      .map((t) => ({
+        document_id: documentId,
+        page_or_section: t.pageOrSection,
+        headers: t.headers.slice(0, 8).map((h) => String(h).slice(0, 120)),
+        rows: t.rows.slice(0, 60).map((r) => r.slice(0, 8).map((c) => String(c).slice(0, 120))),
+      }));
+    if (rows.length > 0) await supabaseAdmin().from("corpus_document_tables").insert(rows);
   }
 
   // Route on whether the text is ALREADY extracted, not on file format.

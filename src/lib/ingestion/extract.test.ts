@@ -116,6 +116,48 @@ describe("extractPptx — diagrams", () => {
     expect(extractPptx(new Uint8Array(zip)).media).toHaveLength(1);
   });
 
+  it("keeps a PowerPoint table as a grid instead of dissolving it into prose", () => {
+    // A table's cells are ordinary <a:p> paragraphs, so paragraph-by-paragraph
+    // reading turned the real Grade 7 distance-time table into
+    // "Time in s Distance in m 0 50 1 50 2 50" — a run-on line that read as
+    // gibberish and forced a regex downstream to guess the grid back.
+    const rows = [
+      ["Time in s", "Distance in m"],
+      ["0", "50"],
+      ["1", "50"],
+      ["2", "50"],
+    ];
+    const tbl =
+      `<a:tbl>` +
+      rows
+        .map((r) => `<a:tr>${r.map((c) => `<a:tc><a:p><a:r><a:t>${c}</a:t></a:r></a:p></a:tc>`).join("")}</a:tr>`)
+        .join("") +
+      `</a:tbl>`;
+    const xml =
+      `<p:sld><p:cSld><p:spTree><p:sp><p:txBody>` +
+      `<a:p><a:r><a:t>Plot a graph for a parked car.</a:t></a:r></a:p>` +
+      `</p:txBody></p:sp><p:graphicFrame>${tbl}</p:graphicFrame></p:spTree></p:cSld></p:sld>`;
+
+    const { pages, tables } = extractPptx(new Uint8Array(zipSync({ "ppt/slides/slide1.xml": strToU8(xml) })));
+
+    expect(tables).toHaveLength(1);
+    expect(tables[0]).toMatchObject({ pageOrSection: 1, headers: ["Time in s", "Distance in m"] });
+    expect(tables[0].rows).toEqual([["0", "50"], ["1", "50"], ["2", "50"]]);
+    // The page text keeps the data as rows, so the model chunking it sees a
+    // table rather than the run-on line.
+    expect(pages[0].text).toContain("Time in s | Distance in m");
+    expect(pages[0].text).toContain("0 | 50");
+  });
+
+  it("ignores a layout table that holds no data", () => {
+    // PowerPoint tables are used for positioning as often as for data; one
+    // cell of prose in a grid is a text box, not a dataset.
+    const tbl =
+      `<a:tbl><a:tr><a:tc><a:p><a:r><a:t>Describe motion from a graph.</a:t></a:r></a:p></a:tc></a:tr></a:tbl>`;
+    const xml = `<p:sld><p:cSld><p:spTree><p:graphicFrame>${tbl}</p:graphicFrame></p:spTree></p:cSld></p:sld>`;
+    expect(extractPptx(new Uint8Array(zipSync({ "ppt/slides/slide1.xml": strToU8(xml) }))).tables).toHaveLength(0);
+  });
+
   it("drops the logo that repeats across the deck", () => {
     const files: Record<string, Uint8Array> = { "ppt/media/logo.png": pngBytes(400, 300) };
     for (let i = 1; i <= 9; i++) {
