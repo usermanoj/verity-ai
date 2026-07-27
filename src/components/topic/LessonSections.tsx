@@ -41,7 +41,7 @@ function Section({ chunk, index }: { chunk: CorpusChunk; index: number }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="group relative scroll-mt-24 overflow-hidden rounded-3xl border border-[var(--border)] bg-[rgba(255,255,255,0.03)] p-6 transition-colors hover:border-[rgba(99,102,241,0.45)]"
+      className="glass group relative scroll-mt-28 overflow-hidden rounded-3xl p-6 transition-colors hover:border-[rgba(99,102,241,0.45)]"
     >
       {/* A quiet accent that warms on hover — the cards read as objects you
           can move through rather than as one undifferentiated wall. */}

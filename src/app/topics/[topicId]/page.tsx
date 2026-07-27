@@ -52,7 +52,7 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
 
       {/* Hero. The demo topics open with a statement of what the lesson is
           for; uploaded ones opened with a filename and a wall of text. */}
-      <section className="relative overflow-hidden rounded-3xl border border-[var(--border)] p-8">
+      <section className="glass relative overflow-hidden rounded-3xl p-8">
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.28),transparent_65%)]" />
         <div className="pointer-events-none absolute -bottom-32 left-1/3 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(34,211,238,0.18),transparent_65%)]" />
 
