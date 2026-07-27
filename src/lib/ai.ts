@@ -39,6 +39,73 @@ export const GATEWAY_FALLBACK_MODELS = [
   "meta/llama-3.3-70b",
 ];
 
+// How many model calls this app will have in flight at once.
+//
+// Ingestion fans out per batch, and question generation fanned out per chunk
+// — up to forty concurrent calls the moment a teacher approved a deck. On the
+// Gateway's free tier that is not "fast", it is an instant rate limit: the
+// upload failed after three attempts with "Free tier requests on this model
+// are rate-limited", having done all the work and thrown it away.
+//
+// Two is deliberately conservative. The bottleneck for a teacher is the slow
+// first call, not throughput, and a run that finishes is worth far more than
+// one that races and fails.
+const MAX_CONCURRENT_AI_CALLS = Number(process.env.AI_MAX_CONCURRENCY || 2);
+
+// Rate limits are a queue signal, not a failure. Retrying immediately (which
+// is what a bare retry does) simply spends the remaining attempts inside the
+// same limited window and reports defeat a second later.
+const RETRY_DELAYS_MS = [1_000, 4_000, 12_000];
+
+function isRateLimit(error: unknown): boolean {
+  const status = (error as { statusCode?: number; status?: number })?.statusCode ?? (error as { status?: number })?.status;
+  if (status === 429) return true;
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /rate[- ]?limit|too many requests|quota/i.test(message);
+}
+
+export async function withRateLimitRetry<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      if (attempt >= RETRY_DELAYS_MS.length || !isRateLimit(error)) throw error;
+      // Jittered, so parallel calls that were limited together don't all come
+      // back at the same instant and limit each other again.
+      const wait = RETRY_DELAYS_MS[attempt] * (0.75 + Math.random() * 0.5);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+}
+
+// Promise.all with a ceiling. Results keep input order, so callers that rely
+// on position (chunk batches, question sets) are unaffected.
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  run: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (true) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await run(items[index], index);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
+// The two together: bounded concurrency, and each call patient with a rate
+// limit rather than burning its retries inside one.
+export function mapAiCalls<T, R>(items: T[], run: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  return mapWithConcurrency(items, MAX_CONCURRENT_AI_CALLS, (item, i) => withRateLimitRetry(() => run(item, i)));
+}
+
 // Wraps a system prompt with an Anthropic prompt-cache breakpoint (the
 // approved corpus is large and reused across many requests per topic). The
 // Gateway forwards providerOptions to whichever provider is active and

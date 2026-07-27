@@ -218,7 +218,7 @@ function MatchingInput({
   value,
   onChange,
 }: {
-  pairs: { left: string; right: string }[];
+  pairs: readonly { left: string; right: string }[];
   value: string;
   onChange: (v: string) => void;
 }) {

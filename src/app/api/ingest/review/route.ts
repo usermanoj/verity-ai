@@ -3,6 +3,7 @@ import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { generatePracticeQuestions } from "@/lib/questions/generate";
+import { mapAiCalls } from "@/lib/ai";
 
 export const runtime = "nodejs";
 
@@ -95,30 +96,33 @@ async function generateQuestionsForDocument(documentId: string, teacherId: strin
     const { data: chunks } = await admin
       .from("corpus_chunks")
       .select("id, heading, text")
-      // A cap keeps a very long document from firing a hundred model calls at
-      // once; the per-chunk "Generate" button still covers the remainder.
+      // A cap keeps a very long document from firing a hundred model calls;
+      // the per-chunk "Generate" button still covers the remainder.
       .eq("document_id", documentId)
       .limit(40);
     if (!chunks || chunks.length === 0) return;
 
-    const generated = await Promise.all(
-      chunks.map(async (chunk) => {
-        try {
-          const questions = await generatePracticeQuestions(chunk.heading, chunk.text);
-          return questions.map((q) => ({
-            chunk_id: chunk.id,
-            level: q.level,
-            prompt: q.prompt,
-            question: q.question as unknown as Record<string, unknown>,
-            status: "pending" as const,
-            generated_by: teacherId,
-          }));
-        } catch {
-          // One chunk failing shouldn't cost the whole document its questions.
-          return [];
-        }
-      }),
-    );
+    // mapAiCalls, not Promise.all: this fanned out one call per chunk with no
+    // ceiling, so approving a 30-section deck asked the Gateway for thirty
+    // completions at the same instant. On the free tier that is an immediate
+    // rate limit rather than speed — and since each question set is
+    // independent, the work is identical either way, just spread out.
+    const generated = await mapAiCalls(chunks, async (chunk) => {
+      try {
+        const questions = await generatePracticeQuestions(chunk.heading, chunk.text);
+        return questions.map((q) => ({
+          chunk_id: chunk.id,
+          level: q.level,
+          prompt: q.prompt,
+          question: q.question as unknown as Record<string, unknown>,
+          status: "pending" as const,
+          generated_by: teacherId,
+        }));
+      } catch {
+        // One chunk failing shouldn't cost the whole document its questions.
+        return [];
+      }
+    });
 
     const rows = generated.flat();
     if (rows.length > 0) await admin.from("generated_questions").insert(rows);
