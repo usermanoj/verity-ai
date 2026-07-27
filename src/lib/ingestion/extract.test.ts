@@ -75,6 +75,21 @@ describe("extractDocument — pptx", () => {
     expect(pages[0].text).not.toMatch(/^2/);
   });
 
+  it("keeps runs carrying attributes, so text cannot vanish mid-word", async () => {
+    // PowerPoint puts xml:space="preserve" on any run whose text has
+    // meaningful leading/trailing whitespace — i.e. most runs continuing a
+    // phrase. Matching only the bare <a:t> dropped them silently, turning
+    // "Scrap yard Electromagnets" into "Scrap yard Electro" on the page.
+    const xml =
+      `<p:sld><p:cSld><p:spTree><p:sp><p:txBody><a:p>` +
+      `<a:r><a:t>Scrap yard </a:t></a:r>` +
+      `<a:r><a:t xml:space="preserve">Electro</a:t></a:r>` +
+      `<a:r><a:t xml:space="preserve">magnets</a:t></a:r>` +
+      `</a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`;
+    const { pages } = await extractDocument(pptxBuffer({ "ppt/slides/slide1.xml": xml }), "pptx");
+    expect(pages[0].text).toBe("Scrap yard Electromagnets");
+  });
+
   it("skips text-less slides and decodes XML entities", async () => {
     const buf = pptxBuffer({
       "ppt/slides/slide1.xml": slideXml([]), // image-only / empty slide

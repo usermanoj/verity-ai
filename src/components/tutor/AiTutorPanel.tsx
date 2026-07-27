@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CHECKABLE_CHUNK_IDS } from "@/lib/tutor";
+import RichText from "./RichText";
 
 type Intent = "explain" | "translate" | "example" | "askme" | "check";
 type EslLevel = "advanced" | "intermediate" | "beginner" | "beginner_zh";
@@ -348,10 +349,19 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
                     : "glass text-[var(--text)]"
                 }`}
               >
-                <p className="whitespace-pre-wrap">
-                  {m.text}
-                  {m.streaming && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-current align-text-bottom" />}
-                </p>
+                {/* The model replies in Markdown — numbered steps, bold key
+                    terms, formulas. Rendering it raw showed students literal
+                    "**Axes**" and "- item", so the assistant looked broken
+                    exactly where its answers were most structured. Student
+                    messages stay plain text: they aren't Markdown. */}
+                {m.role === "ai" ? (
+                  <div>
+                    <RichText text={m.text} />
+                    {m.streaming && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-current align-text-bottom" />}
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                )}
                 {m.cite && (
                   <div className="mt-2 rounded-lg bg-[rgba(34,211,238,0.12)] px-2 py-1 text-xs text-[var(--brand2)]">
                     {m.cite}
@@ -407,7 +417,7 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
           placeholder={
             lastIntent === "askme"
               ? "Type your answer to continue…"
-              : "Ask about moments… (or just tap a button)"
+              : `Ask about ${topicTitle}… (or just tap a button)`
           }
           className="mb-2 w-full rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)] focus:ring-[var(--brand)]"
           onKeyDown={(e) => e.key === "Enter" && ask(lastIntent)}

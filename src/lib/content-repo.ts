@@ -75,6 +75,24 @@ class FileContentRepository implements ContentRepository {
 // exposed by document id rather than by the viewer's enrolment. Once student
 // auth lands, getTopics()/getCorpusForTopic() should filter by the sections
 // the student is actually enrolled in (class_enrollments).
+// A lesson has to read in document order. Postgres returns rows in whatever
+// order it pleases without an ORDER BY, which was presenting a deck as
+// slides 17, 18, 33, 3 — the material arrived shuffled, so the sections
+// contradicted each other and no explanation built on the one before it.
+//
+// The page number currently survives only inside the citation string that
+// ingestion generates ("<file> — Page/Section 17"), so ordering parses it
+// back out. A dedicated page_or_section column would be the cleaner home for
+// it; this needs no migration and no backfill of already-uploaded documents,
+// and the string is one we produce rather than one we found.
+//
+// Anything unparseable sorts last rather than to the front, so a malformed
+// citation can never displace the opening section of a lesson.
+export function pageOf(citation: string): number {
+  const match = /Page\/Section\s+(\d+)\s*$/.exec(citation);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
 class PostgresContentRepository implements ContentRepository {
   private files = new FileContentRepository();
 
@@ -124,9 +142,10 @@ class PostgresContentRepository implements ContentRepository {
       .from("corpus_chunks")
       .select("id, heading, text, citation")
       .eq("document_id", topicId)
-      .not("approved_at", "is", null);
+      .not("approved_at", "is", null)
+      .order("created_at", { ascending: true });
     if (error) throw error;
-    return (data ?? []).map((c) => toCorpusChunk(c, topicId));
+    return (data ?? []).sort((a, b) => pageOf(a.citation) - pageOf(b.citation)).map((c) => toCorpusChunk(c, topicId));
   }
 
   async getCorpusChunk(id: string): Promise<CorpusChunk | undefined> {
