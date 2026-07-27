@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AiTutorPanel from "@/components/tutor/AiTutorPanel";
-import ReadingText from "@/components/reading/ReadingText";
+import LessonSections from "@/components/topic/LessonSections";
 import PracticeZone from "@/components/practice/PracticeZone";
 import { contentRepo } from "@/lib/content-repo";
 
@@ -46,32 +46,33 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
         Approved class material — the assistant answers only from this, and cites it every time.
       </p>
 
+      <div className="mt-5 flex flex-wrap items-center gap-2 text-xs">
+        <span className="rounded-full bg-[rgba(99,102,241,0.16)] px-3 py-1.5 text-[var(--brand2)]">
+          📘 {chunks.length} section{chunks.length === 1 ? "" : "s"}
+        </span>
+        {bank.length > 0 && (
+          <span className="rounded-full bg-[rgba(52,211,153,0.16)] px-3 py-1.5 text-[#6ee7b7]">
+            🎯 {bank.length} practice question{bank.length === 1 ? "" : "s"}
+          </span>
+        )}
+        <span className="glass rounded-full px-3 py-1.5 text-[var(--muted)]">✓ Teacher-approved · cited</span>
+      </div>
+
       <div className="mt-8 grid gap-6 lg:grid-cols-[1.15fr_1fr]">
         <div className="space-y-6">
-          <section className="glass rounded-3xl p-6">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="text-lg">📘</span>
-              <h2 className="text-lg font-semibold">Learn</h2>
-              <span className="ml-auto text-xs text-[var(--muted)]">hover a dotted word for meaning + 中文</span>
-            </div>
-            <div className="space-y-4">
-              {chunks.map((c) => (
-                <div key={c.id}>
-                  {c.heading && <h3 className="mb-1 text-sm font-semibold text-[var(--brand2)]">{c.heading}</h3>}
-                  {/* A title-only slide makes heading and text identical —
-                      show the body only when it adds something. */}
-                  {c.text.trim() !== c.heading.trim() && <ReadingText text={c.text} />}
-                  <div className="mt-1 text-xs text-[var(--muted)]">📖 {c.source}</div>
-                </div>
-              ))}
-            </div>
-          </section>
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📘</span>
+            <h2 className="text-lg font-semibold">Learn</h2>
+            <span className="ml-auto text-xs text-[var(--muted)]">hover a dotted word for meaning + 中文</span>
+          </div>
+
+          <LessonSections chunks={chunks} />
 
           {bank.length > 0 ? (
             <PracticeZone key={topicId} bank={bank} />
           ) : (
             <div className="glass rounded-3xl p-6 text-sm text-[var(--muted)]">
-              No practice questions yet — your teacher can generate and approve them from this material.
+              Practice questions are being prepared from this material — your teacher approves them before they appear.
             </div>
           )}
         </div>
