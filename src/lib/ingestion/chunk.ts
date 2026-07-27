@@ -4,10 +4,14 @@ import { CHUNK_MODEL, GATEWAY_FALLBACK_MODELS } from "@/lib/ai";
 import type { ExtractedPage } from "./extract";
 
 const ChunkSchema = z.object({
-  heading: z.string().describe("A short, descriptive heading for this chunk (e.g. 'What is a moment?')"),
+  heading: z
+    .string()
+    .describe("A short, descriptive heading naming the concept (e.g. 'Definition of a moment'), NOT the raw first line"),
   text: z
     .string()
-    .describe("The chunk's content, faithfully extracted/lightly cleaned — never add information not present in the source"),
+    .describe(
+      "The concept written as continuous prose a student can read, using only facts present in the source. Keep formulas, units and worked examples verbatim.",
+    ),
   pageOrSection: z.number().describe("Which page/section number of the source document this chunk came from"),
 });
 
@@ -15,11 +19,23 @@ const ChunkingResultSchema = z.object({ chunks: z.array(ChunkSchema) });
 
 export type AiChunk = z.infer<typeof ChunkSchema>;
 
-const SYSTEM_PROMPT =
-  "You are helping a teacher prepare approved learning material for a closed-corpus AI tutor that must cite " +
-  "sources exactly. Split the following extracted document text into logical chunks — one topic or concept per " +
-  "chunk. Faithfully preserve the original wording and meaning; do not summarize, add, or infer information " +
-  "that is not present in the text. Record which page/section number each chunk came from.";
+// Slide decks are written to be *spoken over*: fragments, stray labels,
+// repeated titles. Pasting that verbatim gave students something that read
+// like a slide dump rather than a lesson — this prompt's job is to turn
+// fragments into readable teaching text WITHOUT inventing anything, which is
+// the same closed-corpus discipline the tutor itself follows.
+const SYSTEM_PROMPT = [
+  "You are helping a teacher prepare approved learning material for a closed-corpus AI tutor that cites sources exactly.",
+  "Split the extracted document text into chunks — one concept per chunk — and write each so a student can read it on its own.",
+  "",
+  "Rules, in priority order:",
+  "1. NEVER add facts, examples, numbers or explanations that are not present in the source text. If the source is thin, the chunk is short. Inventing content breaks the guarantee this product is built on.",
+  "2. Reproduce formulas, quantities, units and worked examples EXACTLY as given — including every step of a worked solution.",
+  "3. Rewrite fragments and bullet points into complete, connected sentences. Slide text is written to be spoken over, so it is often clipped; make it readable prose while preserving the meaning and terminology.",
+  "4. Give each chunk a heading that names the concept ('Definition of a moment', 'Worked example: balancing a seesaw'). Do not simply repeat the chunk's first sentence as its heading.",
+  "5. Drop slide furniture that teaches nothing: page numbers, deck titles, 'Any questions?', image credits, navigation labels.",
+  "6. Merge consecutive pages covering one concept into a single chunk; split a page that genuinely covers two. Record the page/section number the chunk came from (the first, if merged).",
+].join("\n");
 
 // How many source pages/slides go into one model call. Chunking a whole deck
 // in a single call meant the model had to *generate* every chunk one after
@@ -30,40 +46,22 @@ const SYSTEM_PROMPT =
 // pages, and each carries its own source page number).
 const PAGES_PER_BATCH = 8;
 
-// Whether a format needs a model call to find chunk boundaries.
+// Every format goes through the model now.
 //
-// PPTX doesn't: a slide is authored as a discrete topic with its own title,
-// so extraction alone produces the chunks. That makes it fast enough to run
-// inline in the request instead of on a durable workflow — which matters,
-// because workflow dispatch was measured at 8–11s for work taking under a
-// second. Prose formats (DOCX/TXT = one block; PDF = layout pages that don't
-// map to concepts) genuinely need the model, so they stay async.
-export function needsModelChunking(ext: string): boolean {
-  return ext.toLowerCase() !== "pptx";
-}
+// PPTX briefly skipped it — a slide looked like a ready-made chunk, and
+// removing the call collapsed a 30-60s wait. But the output was raw slide
+// fragments with the title repeated as the body: fast and unreadable. The
+// wait had other causes anyway (workflow dispatch, a top-tier model, a 21 MB
+// server-side download), all since fixed, so the call now runs on
+// already-extracted text, on the fast tier, in parallel batches.
+//
+// Routing inline-vs-workflow moved to upload-complete and now keys on whether
+// the text is already extracted, which is what actually bounds the work.
 
-// AI-assisted, not AI-decided: the model splits and lightly cleans text it
-// is given, it never generates new claims — the same "closed-corpus"
-// discipline as the tutor itself, applied to ingestion.
+// AI-assisted, not AI-decided: the model reorganises and clarifies text it is
+// given, it never generates new claims — and a teacher approves every chunk
+// before a student sees it.
 export async function chunkExtractedText(sourceFileName: string, pages: ExtractedPage[]): Promise<AiChunk[]> {
-  const ext = sourceFileName.split(".").pop()?.toLowerCase();
-
-  // PPTX: each slide is authored as a discrete topic with its own title, so
-  // it is ALREADY a chunk. Skip the model entirely — no network call at all.
-  // This is both far faster (a slide deck was the whole "Processing…" wait)
-  // and *better* chunking than asking a model to re-derive boundaries the
-  // deck already defines. The teacher reviews every chunk regardless, so a
-  // rare over-long slide is caught. Prose formats (DOCX/TXT = one big block;
-  // PDF = layout pages that don't map cleanly to concepts) have no such
-  // natural boundaries and still need the model.
-  if (ext === "pptx") {
-    return pages.map((p) => ({
-      heading: deriveHeading(p.text),
-      text: p.text.trim(),
-      pageOrSection: p.pageOrSection,
-    }));
-  }
-
   const batches: ExtractedPage[][] = [];
   for (let i = 0; i < pages.length; i += PAGES_PER_BATCH) {
     batches.push(pages.slice(i, i + PAGES_PER_BATCH));
@@ -76,27 +74,12 @@ export async function chunkExtractedText(sourceFileName: string, pages: Extracte
   return results.flat().sort((a, b) => a.pageOrSection - b.pageOrSection);
 }
 
-// A slide's heading is its title — the first meaningful line, since that's
-// where slide layouts put it. Purely numeric lines are skipped: slide-number
-// placeholders are stripped during extraction, but page numbers and stray
-// figures can still lead a slide, and a heading reading "2" is useless.
-// Capped so a title-less slide (whose first line is body text) still yields
-// a sane label.
-function deriveHeading(slideText: string): string {
-  const firstLine = slideText
-    .split("\n")
-    .map((l) => l.trim())
-    .find((l) => l.length > 0 && !/^\d+$/.test(l));
-  if (!firstLine) return "Slide";
-  return firstLine.length > 80 ? `${firstLine.slice(0, 79)}…` : firstLine;
-}
-
 async function chunkBatch(sourceFileName: string, pages: ExtractedPage[]): Promise<AiChunk[]> {
   const pagesBlock = pages.map((p) => `--- Page/Section ${p.pageOrSection} ---\n${p.text}`).join("\n\n");
 
   const { output } = await generateText({
     // Fast tier, not the primary model — see CHUNK_MODEL's rationale in
-    // lib/ai.ts (mechanical extraction + teacher reviews every chunk anyway).
+    // lib/ai.ts (mechanical rewriting + teacher reviews every chunk anyway).
     model: CHUNK_MODEL,
     system: SYSTEM_PROMPT,
     prompt: `Source file: ${sourceFileName}\n\n${pagesBlock}`,
