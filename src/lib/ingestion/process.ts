@@ -51,6 +51,7 @@ export async function extractAndSaveChunks(
     heading: c.heading,
     text: c.text,
     citation: `${doc.source_file} — Page/Section ${c.pageOrSection}`,
+    module: c.module ?? null,
   }));
   if (rows.length === 0) return 0;
 

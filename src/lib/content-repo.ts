@@ -158,7 +158,7 @@ class PostgresContentRepository implements ContentRepository {
     // document, so it doubles as "cleared for students".
     const { data, error } = await supabaseAdmin()
       .from("corpus_chunks")
-      .select("id, heading, text, citation")
+      .select("id, heading, text, citation, module")
       .eq("document_id", topicId)
       .not("approved_at", "is", null)
       .order("created_at", { ascending: true });
@@ -198,7 +198,7 @@ class PostgresContentRepository implements ContentRepository {
 
     const { data } = await supabaseAdmin()
       .from("corpus_chunks")
-      .select("id, document_id, heading, text, citation")
+      .select("id, document_id, heading, text, citation, module")
       .eq("id", id)
       .not("approved_at", "is", null)
       .maybeSingle();
@@ -269,7 +269,7 @@ function toTopicMeta(doc: DocumentRow): TopicMeta {
 }
 
 function toCorpusChunk(
-  row: { id: string; heading: string | null; text: string; citation: string },
+  row: { id: string; heading: string | null; text: string; citation: string; module?: string | null },
   topicId: string,
 ): CorpusChunk {
   return {
@@ -279,6 +279,7 @@ function toCorpusChunk(
     topicId,
     heading: row.heading ?? "",
     text: row.text,
+    module: row.module ?? undefined,
   };
 }
 

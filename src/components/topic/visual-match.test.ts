@@ -78,13 +78,23 @@ describe("assignVisuals", () => {
     expect(kinds).toEqual(["electromagnet", null, null]);
   });
 
-  it("yields to a diagram from the teacher's own deck", () => {
+  it("spends a concept's interactive on the section without a real diagram", () => {
     const kinds = assignVisuals([
       { heading: "Domains in magnetic materials", text: "They line up once magnetised.", hasMedia: true },
       { heading: "More about domains", text: "The domains align in the same direction.", hasMedia: false },
     ]);
-    // The first section shows the real diagram; the concept is still
-    // unclaimed, so the next section that needs it may use the interactive.
+    // The first already has the teacher's own picture, so the interactive is
+    // better spent on the section that has nothing.
     expect(kinds).toEqual([null, "domains"]);
+  });
+
+  it("still gives an illustrated section its interactive when nothing else claims it", () => {
+    // A diagram and something you can turn in your hands do different jobs.
+    // Treating them as mutually exclusive denied interaction to exactly the
+    // best-illustrated sections.
+    const kinds = assignVisuals([
+      { heading: "Magnetic field around a bar magnet", text: "The region around a magnet where a pole feels force.", hasMedia: true },
+    ]);
+    expect(kinds).toEqual(["field"]);
   });
 });

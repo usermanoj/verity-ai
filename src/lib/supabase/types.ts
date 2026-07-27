@@ -250,6 +250,7 @@ export type Database = {
           heading: string | null;
           text: string;
           citation: string;
+          module: string | null;
           approved_by: string | null;
           approved_at: string | null;
           created_at: string;
@@ -260,6 +261,7 @@ export type Database = {
           heading?: string | null;
           text: string;
           citation: string;
+          module?: string | null;
           approved_by?: string | null;
           approved_at?: string | null;
           created_at?: string;
@@ -270,6 +272,7 @@ export type Database = {
           heading?: string | null;
           text?: string;
           citation?: string;
+          module?: string | null;
           approved_by?: string | null;
           approved_at?: string | null;
           created_at?: string;
