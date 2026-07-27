@@ -101,14 +101,32 @@ export function visualFor(heading: string, text: string): VisualKind | null {
 // interactive once, at the first section that matches it.
 export function assignVisuals(sections: { heading: string; text: string; hasMedia: boolean }[]): (VisualKind | null)[] {
   const used = new Set<VisualKind>();
-  return sections.map((s) => {
-    // A diagram from the teacher's own deck always wins.
-    if (s.hasMedia) return null;
-    const kind = visualFor(s.heading, s.text);
-    if (!kind || used.has(kind)) return null;
-    used.add(kind);
-    return kind;
-  });
+
+  // Two passes, so a concept's interactive is not spent on a section that
+  // already has the teacher's own diagram.
+  //
+  // The first version skipped any section with media outright, which made the
+  // two mutually exclusive — a static picture OR something to try, never
+  // both. That was the wrong call: a diagram of field lines and a field you
+  // can turn in your hands do different jobs, and the deck's best-illustrated
+  // sections were exactly the ones being denied interaction. Now a section
+  // with media keeps its diagram and takes the interactive only if no
+  // media-less section elsewhere in the lesson wants it.
+  const kinds = sections.map((s) => visualFor(s.heading, s.text));
+  const assigned: (VisualKind | null)[] = sections.map(() => null);
+
+  for (const preferMediaLess of [true, false]) {
+    sections.forEach((s, i) => {
+      if (assigned[i]) return;
+      if (preferMediaLess === s.hasMedia) return;
+      const kind = kinds[i];
+      if (!kind || used.has(kind)) return;
+      used.add(kind);
+      assigned[i] = kind;
+    });
+  }
+
+  return assigned;
 }
 
 export default function ConceptVisual({ kind }: { kind: VisualKind }) {

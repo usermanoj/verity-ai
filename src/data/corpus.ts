@@ -13,6 +13,11 @@ export type CorpusChunk = {
   topicId: string;
   heading: string;
   text: string;
+  // The part of the lesson this concept belongs to. Chunking names it once
+  // per document so a 33-section deck reads as five or six movements rather
+  // than 33 equal peers. Undefined for the hand-built demo topics and for
+  // anything ingested before modules existed — both render flat.
+  module?: string;
 };
 
 export type TopicMeta = {

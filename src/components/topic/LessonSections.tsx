@@ -45,10 +45,41 @@ export default function LessonSections({
     }),
   );
 
+  // Consecutive sections sharing a module become one part of the lesson.
+  // Grouping by consecutive run rather than by name keeps reading order
+  // intact — a deck that returns to an earlier theme should not have its
+  // later sections yanked back up the page to join it.
+  const parts: { module?: string; items: { chunk: CorpusChunk; index: number }[] }[] = [];
+  chunks.forEach((chunk, index) => {
+    const last = parts[parts.length - 1];
+    if (last && last.module === chunk.module) last.items.push({ chunk, index });
+    else parts.push({ module: chunk.module, items: [{ chunk, index }] });
+  });
+
+  const showModules = parts.some((p) => p.module) && parts.length > 1;
+
   return (
     <div className="space-y-5">
-      {chunks.map((c, i) => (
-        <Section key={c.id} chunk={c} index={i} media={mediaFor(c)} visual={visuals[i]} />
+      {parts.map((part, partIndex) => (
+        <div key={`${part.module ?? "part"}-${partIndex}`} className="space-y-5">
+          {showModules && part.module && (
+            <motion.h3
+              initial={{ opacity: 0, x: -8 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="flex items-center gap-3 pt-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--brand2)]"
+            >
+              <span className="h-px w-6 bg-[var(--brand2)]/50" />
+              {part.module}
+              <span className="text-[var(--muted)] normal-case tracking-normal">
+                · {part.items.length} section{part.items.length === 1 ? "" : "s"}
+              </span>
+            </motion.h3>
+          )}
+          {part.items.map(({ chunk, index }) => (
+            <Section key={chunk.id} chunk={chunk} index={index} media={mediaFor(chunk)} visual={visuals[index]} />
+          ))}
+        </div>
       ))}
     </div>
   );

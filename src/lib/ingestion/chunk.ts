@@ -13,6 +13,12 @@ const ChunkSchema = z.object({
       "The concept written as continuous prose a student can read, using only facts present in the source. Keep formulas, units and worked examples verbatim.",
     ),
   pageOrSection: z.number().describe("Which page/section number of the source document this chunk came from"),
+  module: z
+    .string()
+    .optional()
+    .describe(
+      "The part of the lesson this concept belongs to, e.g. 'Magnetic materials' or 'Electromagnets'. Reuse the SAME wording for every chunk in that part.",
+    ),
 });
 
 const ChunkingResultSchema = z.object({ chunks: z.array(ChunkSchema) });
@@ -67,25 +73,72 @@ export async function chunkExtractedText(sourceFileName: string, pages: Extracte
     batches.push(pages.slice(i, i + PAGES_PER_BATCH));
   }
 
-  const results = await Promise.all(batches.map((batch) => chunkBatch(sourceFileName, batch)));
+  // Batches are chunked in parallel and cannot see each other, so left to
+  // themselves they each invent their own names for the same part of the
+  // lesson — "Electromagnets", "Making electromagnets" and "Coils" would all
+  // appear as separate modules. One cheap pass over the page openings fixes
+  // the vocabulary first, and every batch then picks from that fixed list.
+  const outline = await deriveOutline(sourceFileName, pages);
+
+  const results = await Promise.all(batches.map((batch) => chunkBatch(sourceFileName, batch, outline)));
 
   // Restore document order: batches resolve in whatever order they finish,
   // but chunks must stay in reading order for the teacher's review.
   return results.flat().sort((a, b) => a.pageOrSection - b.pageOrSection);
 }
 
-async function chunkBatch(sourceFileName: string, pages: ExtractedPage[]): Promise<AiChunk[]> {
+// Five to eight parts, from the deck's own openings. Only the first couple of
+// lines of each page go in, which keeps this call small and fast even for a
+// long deck — naming the shape of a lesson doesn't need its full text.
+async function deriveOutline(sourceFileName: string, pages: ExtractedPage[]): Promise<string[]> {
+  const openings = pages
+    .map((p) => `${p.pageOrSection}. ${p.text.split("\n").slice(0, 2).join(" — ").slice(0, 160)}`)
+    .join("\n");
+
+  try {
+    const { output } = await generateText({
+      model: CHUNK_MODEL,
+      system: [
+        "You are outlining a lesson from the titles of a teacher's slides.",
+        "Name the 5-8 parts this lesson divides into, in teaching order.",
+        "Each name is 2-4 words describing the concept ('Magnetic materials', 'Electromagnets', 'Magnetic fields').",
+        "Use only what the slides are about — never add a part the deck does not cover.",
+      ].join("\n"),
+      prompt: `Source file: ${sourceFileName}\n\nSlide openings:\n${openings}`,
+      output: Output.object({ schema: z.object({ modules: z.array(z.string()).min(1).max(10) }) }),
+      providerOptions: { gateway: { models: GATEWAY_FALLBACK_MODELS } },
+    });
+    return output.modules;
+  } catch {
+    // Grouping is presentation. If the outline call fails the lesson still
+    // has all its content and simply renders flat, which is what it did
+    // before modules existed.
+    return [];
+  }
+}
+
+async function chunkBatch(sourceFileName: string, pages: ExtractedPage[], outline: string[]): Promise<AiChunk[]> {
   const pagesBlock = pages.map((p) => `--- Page/Section ${p.pageOrSection} ---\n${p.text}`).join("\n\n");
+  const outlineBlock =
+    outline.length > 0
+      ? `\n\nThis lesson's parts, decided for the whole document. Set each chunk's "module" to EXACTLY one of these strings:\n${outline.map((m) => `- ${m}`).join("\n")}`
+      : "";
 
   const { output } = await generateText({
     // Fast tier, not the primary model — see CHUNK_MODEL's rationale in
     // lib/ai.ts (mechanical rewriting + teacher reviews every chunk anyway).
     model: CHUNK_MODEL,
     system: SYSTEM_PROMPT,
-    prompt: `Source file: ${sourceFileName}\n\n${pagesBlock}`,
+    prompt: `Source file: ${sourceFileName}${outlineBlock}\n\n${pagesBlock}`,
     output: Output.object({ schema: ChunkingResultSchema }),
     providerOptions: { gateway: { models: GATEWAY_FALLBACK_MODELS } },
   });
 
-  return output.chunks;
+  // A batch can still drift off the agreed vocabulary. Anything not on the
+  // list is dropped rather than allowed to become a module of one, since a
+  // near-miss name ("Electromagnet" vs "Electromagnets") would split a part
+  // in two on the page.
+  if (outline.length === 0) return output.chunks.map((c) => ({ ...c, module: undefined }));
+  const allowed = new Map(outline.map((m) => [m.toLowerCase().trim(), m]));
+  return output.chunks.map((c) => ({ ...c, module: allowed.get((c.module ?? "").toLowerCase().trim()) }));
 }
