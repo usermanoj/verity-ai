@@ -17,6 +17,14 @@ export type ExtractedPage = { pageOrSection: number; text: string };
 // These beat anything we could synthesise: a teacher drew or chose them, they
 // match what students saw in class, and they carry no invention risk at all.
 // We were unzipping the file, taking the text, and discarding every image.
+// A real PowerPoint table, kept as a grid rather than flattened into prose.
+export type ExtractedTable = {
+  headers: string[];
+  rows: string[][];
+};
+
+export type ExtractedTableOnPage = ExtractedTable & { pageOrSection: number };
+
 export type ExtractedMedia = {
   pageOrSection: number;
   /** Path inside the .pptx, e.g. "ppt/media/image7.png". Used for dedup. */
@@ -37,7 +45,11 @@ export function extractPptxPages(bytes: Uint8Array): ExtractedPage[] {
 // an image is only useful if it lands on the same page number as the text it
 // illustrates, and pages are numbered by *text-bearing* slides, not by slide
 // index.
-export function extractPptx(bytes: Uint8Array): { pages: ExtractedPage[]; media: ExtractedMedia[] } {
+export function extractPptx(bytes: Uint8Array): {
+  pages: ExtractedPage[];
+  media: ExtractedMedia[];
+  tables: ExtractedTableOnPage[];
+} {
   const files = unzipSync(bytes);
   const slideNames = Object.keys(files)
     .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
@@ -45,6 +57,7 @@ export function extractPptx(bytes: Uint8Array): { pages: ExtractedPage[]; media:
 
   const pages: ExtractedPage[] = [];
   const candidates: ExtractedMedia[] = [];
+  const tables: ExtractedTableOnPage[] = [];
   let pageNo = 0;
   // Images from slides that have no text of their own, waiting for a page to
   // belong to. See the carry-forward note below.
@@ -79,9 +92,14 @@ export function extractPptx(bytes: Uint8Array): { pages: ExtractedPage[]; media:
     orphans = [];
 
     for (const m of slideMedia) candidates.push({ ...m, pageOrSection: pageNo });
+
+    for (const raw of xml.match(/<a:tbl>[\s\S]*?<\/a:tbl>/g) ?? []) {
+      const table = tableFromRows(parseTableRows(raw));
+      if (table) tables.push({ ...table, pageOrSection: pageNo });
+    }
   }
 
-  return { pages, media: usefulMedia(candidates, pages.length) };
+  return { pages, media: usefulMedia(candidates, pages.length), tables: tables.slice(0, 20) };
 }
 
 function readSlideMedia(
@@ -217,7 +235,20 @@ function pptSlideText(xml: string): string {
   // effect of a force is called a moment…") and, when the placeholder sat at
   // the top of the layout, becoming the chunk's heading (headings literally
   // read "2" and "3" instead of the slide title).
-  const body = xml.replace(/<a:fld\b[^>]*\btype="slidenum"[^>]*>[\s\S]*?<\/a:fld>/g, "");
+  let body = xml.replace(/<a:fld\b[^>]*\btype="slidenum"[^>]*>[\s\S]*?<\/a:fld>/g, "");
+
+  // A PowerPoint table is a real grid, but its cells are <a:p> paragraphs like
+  // any other text — so paragraph-by-paragraph reading dissolved it into
+  // "Time in s Distance in m 0 50 1 50 2 50", a run-on line that read as
+  // gibberish and forced a fragile regex downstream to guess the grid back.
+  //
+  // Tables are pulled out first and rendered as rows, so the model chunking
+  // this page sees a table and students see one too.
+  const tableLines: string[] = [];
+  body = body.replace(/<a:tbl>[\s\S]*?<\/a:tbl>/g, (table) => {
+    for (const row of parseTableRows(table)) tableLines.push(row.join(" | "));
+    return "";
+  });
 
   const lines: string[] = [];
   for (const para of body.split("</a:p>")) {
@@ -232,7 +263,49 @@ function pptSlideText(xml: string): string {
     const line = runs.join("").trim();
     if (line) lines.push(line);
   }
-  return lines.join("\n");
+  // Table rows go last: the prose above them is nearly always the sentence
+  // that introduces the data.
+  return [...lines, ...tableLines].join("\n");
+}
+
+// Rows of cell text from one <a:tbl>. Cells hold ordinary paragraphs, so each
+// cell's runs are joined the same way slide text is.
+function parseTableRows(tableXml: string): string[][] {
+  return [...tableXml.matchAll(/<a:tr[\s\S]*?<\/a:tr>/g)].map((row) =>
+    [...row[0].matchAll(/<a:tc[\s\S]*?<\/a:tc>/g)].map((cell) =>
+      [...cell[0].matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)]
+        .map((m) => decodeXmlEntities(m[1]))
+        .join("")
+        .trim(),
+    ),
+  );
+}
+
+// A grid worth rendering: a header row plus at least two data rows, and more
+// than one column. Anything narrower is a layout table — PowerPoint's tables
+// are used for positioning as often as for data, and one long cell of prose
+// is a text box wearing a grid.
+export function tableFromRows(rows: string[][]): ExtractedTable | null {
+  const trimmed = rows.filter((r) => r.some((c) => c.length > 0));
+  if (trimmed.length < 3) return null;
+
+  const width = Math.max(...trimmed.map((r) => r.length));
+  if (width < 2) return null;
+
+  const [headers, ...data] = trimmed.map((r) => {
+    const padded = [...r];
+    while (padded.length < width) padded.push("");
+    return padded;
+  });
+
+  // At least one column of the body has to be numbers, or this is a list of
+  // words in a box rather than data a student can read off.
+  const hasNumericColumn = headers.some((_, col) =>
+    data.filter((r) => /^-?\d+(\.\d+)?$/.test(r[col]?.trim() ?? "")).length >= 2,
+  );
+  if (!hasNumericColumn) return null;
+
+  return { headers, rows: data };
 }
 
 function decodeXmlEntities(s: string): string {

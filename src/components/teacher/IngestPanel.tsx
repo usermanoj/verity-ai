@@ -498,11 +498,13 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           // actually uploads a slide deck, not on every page view.
           let extractedPages: { pageOrSection: number; text: string }[] | undefined;
           let uploadedMedia: MediaManifestEntry[] = [];
+          let extractedTables: { pageOrSection: number; headers: string[]; rows: string[][] }[] = [];
           if (file.name.split(".").pop()?.toLowerCase() === "pptx") {
             try {
               const { extractPptx } = await import("@/lib/ingestion/pptx");
-              const { pages, media } = extractPptx(new Uint8Array(await file.arrayBuffer()));
+              const { pages, media, tables } = extractPptx(new Uint8Array(await file.arrayBuffer()));
               extractedPages = pages;
+              extractedTables = tables;
               // The deck's own diagrams. Same browser-side reasoning as the
               // text: the bytes are already here, so the server never has to
               // pull the file back out of Storage to find them.
@@ -522,6 +524,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
               storagePath: target.path,
               pages: extractedPages,
               media: uploadedMedia,
+              tables: extractedTables,
             }),
           });
           processMs = Math.max(processMs, Math.round(performance.now() - tProcess));
