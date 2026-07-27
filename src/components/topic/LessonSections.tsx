@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import ReadingText from "@/components/reading/ReadingText";
 import ConceptVisual, { assignVisuals, type VisualKind } from "./visuals/ConceptVisual";
 import DataTable, { type SectionTable } from "./DataTable";
+import { ComparisonCard, FormulaCard, RelationshipCard } from "./StructuredViews";
+import { detectComparison, detectFormula, detectRelationship, type Comparison, type Formula, type Relationship } from "./structure";
 import type { CorpusChunk } from "@/data/corpus";
 
 // Turns approved material into a designed lesson.
@@ -152,6 +154,9 @@ function Section({
           )}
         </>
       )}
+      {view.kind === "comparison" && <ComparisonCard comparison={view.comparison} />}
+      {view.kind === "formula" && <FormulaCard formula={view.formula} />}
+      {view.kind === "relationship" && <RelationshipCard relationship={view.relationship} />}
       {view.kind === "chips" && <ChipList items={view.items} lead={view.lead} />}
       {view.kind === "definition" && (
         <div className="rounded-2xl border-l-2 border-[var(--brand2)] bg-[rgba(34,211,238,0.07)] py-3 pl-4 pr-3">
@@ -205,11 +210,28 @@ type View =
   | { kind: "prose"; text: string }
   | { kind: "definition"; text: string }
   | { kind: "chips"; items: string[]; lead: string }
+  | { kind: "comparison"; comparison: Comparison }
+  | { kind: "formula"; formula: Formula }
+  | { kind: "relationship"; relationship: Relationship }
   | { kind: "table"; table: DetectedTable };
 
 function classify(text: string): View {
   const table = detectTable(text);
   if (table) return { kind: "table", table };
+
+  // Ordered by how specific the shape is. A comparison is unmistakable and
+  // reads worst as a paragraph, so it goes first; a formula can sit inside
+  // any kind of section; a proportionality is a single sentence and yields to
+  // both. Anything unmatched stays prose — the safe default, since a wrong
+  // layout misrepresents the teacher's meaning.
+  const comparison = detectComparison(text);
+  if (comparison) return { kind: "comparison", comparison };
+
+  const formula = detectFormula(text);
+  if (formula) return { kind: "formula", formula };
+
+  const relationship = detectRelationship(text);
+  if (relationship) return { kind: "relationship", relationship };
 
   const chips = detectChipList(text);
   if (chips) return { kind: "chips", ...chips };
