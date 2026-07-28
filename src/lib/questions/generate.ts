@@ -3,13 +3,25 @@ import { z } from "zod";
 import { aiModel, gatewayFailover, STRUCTURED_FALLBACK_MODELS, withRateLimitRetry } from "@/lib/ai";
 import type { Question } from "@/lib/grade";
 
-const QuestionSchema = z.discriminatedUnion("kind", [
+// z.union, not z.discriminatedUnion.
+//
+// They describe the same thing to the model, but Zod serialises a
+// discriminated union as JSON Schema `oneOf`, and OpenAI's strict structured
+// outputs reject `oneOf` outright while accepting `anyOf`. The `kind` literal
+// on each variant already tells the model which shape to fill, so nothing is
+// lost — and the runtime parse is just as strict either way.
+const QuestionSchema = z.union([
   z.object({
     kind: z.literal("numeric"),
     expected: z.number(),
-    unit: z.string().optional(),
-    direction: z.enum(["clockwise", "anticlockwise"]).optional(),
-    tolerance: z.number().optional(),
+    // nullable rather than optional: OpenAI's strict structured outputs
+    // require every key in `properties` to appear in `required`, and Zod's
+    // .optional() omits it. Anthropic accepted the optional form, so this
+    // only broke on switching provider. Nulls are stripped below, since the
+    // app's own Question type expresses "absent" as undefined.
+    unit: z.string().nullable(),
+    direction: z.enum(["clockwise", "anticlockwise"]).nullable(),
+    tolerance: z.number().nullable(),
   }),
   z.object({
     kind: z.literal("mcq"),
@@ -88,5 +100,15 @@ export async function generatePracticeQuestions(chunkHeading: string | null, chu
     }),
   );
 
-  return output.questions;
+  return output.questions.map((q) => ({ ...q, question: withoutNulls(q.question) as Question }));
+}
+
+// Turns the schema's explicit nulls back into absent keys.
+//
+// The schema has to say `unit: null` because OpenAI rejects optional fields,
+// but the grader and the stored jsonb are cleaner without them — and a
+// question carrying `"unit": null` reads, to anyone opening the row later,
+// like a unit that failed to generate rather than one that was never wanted.
+function withoutNulls(question: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(question).filter(([, value]) => value !== null));
 }

@@ -13,9 +13,17 @@ const ChunkSchema = z.object({
       "The concept written as continuous prose a student can read, using only facts present in the source. Keep formulas, units and worked examples verbatim.",
     ),
   pageOrSection: z.number().describe("Which page/section number of the source document this chunk came from"),
+  // nullable, not optional.
+  //
+  // OpenAI's strict structured outputs require every key in `properties` to
+  // appear in `required`, and Zod's .optional() omits it — so this field
+  // alone made every chunking call fail with "Missing 'module'". Anthropic
+  // accepted the same schema, which is exactly why it only surfaced on
+  // switching provider. A nullable field stays required and carries "no
+  // value" explicitly, which both providers accept.
   module: z
     .string()
-    .optional()
+    .nullable()
     .describe(
       "The part of the lesson this concept belongs to, e.g. 'Magnetic materials' or 'Electromagnets'. Reuse the SAME wording for every chunk in that part.",
     ),
@@ -140,7 +148,7 @@ async function chunkBatch(sourceFileName: string, pages: ExtractedPage[], outlin
   // list is dropped rather than allowed to become a module of one, since a
   // near-miss name ("Electromagnet" vs "Electromagnets") would split a part
   // in two on the page.
-  if (outline.length === 0) return output.chunks.map((c) => ({ ...c, module: undefined }));
+  if (outline.length === 0) return output.chunks.map((c) => ({ ...c, module: null }));
   const allowed = new Map(outline.map((m) => [m.toLowerCase().trim(), m]));
-  return output.chunks.map((c) => ({ ...c, module: allowed.get((c.module ?? "").toLowerCase().trim()) }));
+  return output.chunks.map((c) => ({ ...c, module: allowed.get((c.module ?? "").toLowerCase().trim()) ?? null }));
 }
