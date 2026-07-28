@@ -198,6 +198,24 @@ export type Database = {
         };
         Relationships: [];
       };
+      class_enrollments: {
+        Row: {
+          class_id: string;
+          student_id: string;
+          created_at: string;
+        };
+        Insert: {
+          class_id: string;
+          student_id: string;
+          created_at?: string;
+        };
+        Update: {
+          class_id?: string;
+          student_id?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       corpus_document_sections: {
         Row: {
           document_id: string;

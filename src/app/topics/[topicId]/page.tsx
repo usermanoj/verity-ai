@@ -5,6 +5,8 @@ import LessonSections from "@/components/topic/LessonSections";
 import LessonNav from "@/components/topic/LessonNav";
 import PracticeZone from "@/components/practice/PracticeZone";
 import { contentRepo } from "@/lib/content-repo";
+import { requireSignedIn } from "@/lib/auth";
+import { canSee, visibleDocuments } from "@/lib/access";
 
 // Generic topic page for teacher-uploaded material. Every approved document
 // is a topic (see PostgresContentRepository), and its id is a uuid, so this
@@ -19,6 +21,14 @@ export const dynamic = "force-dynamic";
 
 export default async function UploadedTopicPage({ params }: { params: Promise<{ topicId: string }> }) {
   const { topicId } = await params;
+
+  // Approved material was readable by anyone holding this URL. Now: sign in,
+  // and then only if this document reaches a class you are in.
+  const user = await requireSignedIn(`/topics/${topicId}`);
+  const visibility = await visibleDocuments(user);
+  // notFound rather than a "forbidden" page, so the URL does not confirm that
+  // a document with this id exists.
+  if (!canSee(visibility, topicId)) notFound();
 
   const topic = await contentRepo.getTopic(topicId);
   if (!topic) notFound();
