@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { streamText } from "ai";
-import { aiModel, gatewayFailover, GATEWAY_FALLBACK_MODELS, hasApiKey, cachedSystem } from "@/lib/ai";
+import { AI_PROVIDER, aiModel, gatewayFailover, GATEWAY_FALLBACK_MODELS, hasApiKey, cachedSystem } from "@/lib/ai";
 import { hasLangfuse } from "@/lib/observability";
 import { logEvent } from "@/lib/events";
 import { buildSystemPrompt, fallbackReply, type Intent, type EslLevel } from "@/lib/tutor";
@@ -139,6 +139,15 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       let assistantText = "";
+      // streamText does NOT throw when the provider fails — it reports through
+      // onError and ends the stream empty. Without a handler the failure was
+      // completely invisible: nothing in the logs, and a student staring at
+      // "the AI had a problem" with no way to find out which problem.
+      //
+      // This is where the answer lives for the whole class of provider
+      // failures — no credit, bad key, unknown model, rate limit — so it must
+      // never be dropped again.
+      let streamFailure: string | null = null;
       try {
         const result = streamText({
           model: aiModel("primary"),
@@ -147,6 +156,10 @@ export async function POST(req: NextRequest) {
           messages: [...priorTurns, { role: "user", content: userText }],
           experimental_telemetry: { isEnabled: hasLangfuse(), functionId: "tutor" },
           providerOptions: gatewayFailover(GATEWAY_FALLBACK_MODELS),
+          onError({ error }) {
+            streamFailure = error instanceof Error ? error.message : String(error);
+            console.error(`[api/tutor] provider "${AI_PROVIDER}" failed:`, error);
+          },
         });
         let receivedAnyText = false;
         for await (const textDelta of result.textStream) {
@@ -159,8 +172,16 @@ export async function POST(req: NextRequest) {
         // check that surfaces as a silent "success" with nothing shown,
         // exactly what happened with the original claude-opus-4.8 default.
         if (!receivedAnyText) {
+          // The student gets the same calm message either way — the detail is
+          // for the logs and the teacher's error panel, not for a twelve-year-
+          // old mid-lesson.
+          if (!streamFailure) {
+            console.error(
+              `[api/tutor] provider "${AI_PROVIDER}" returned an empty stream with no error`,
+            );
+          }
           controller.enqueue(jsonLine({ type: "delta", text: "⚠️ The AI had a problem generating a reply. Please try again." }));
-          controller.enqueue(jsonLine({ type: "done", error: true }));
+          controller.enqueue(jsonLine({ type: "done", error: true, detail: streamFailure ?? "empty_stream" }));
         } else {
           controller.enqueue(jsonLine({ type: "done", demo: false }));
         }
