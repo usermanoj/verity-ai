@@ -253,6 +253,11 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   // Which document is mid "approve all questions", so its button reports the
   // pending state instead of sitting inert.
   const [approvingAllId, setApprovingAllId] = useState<string | null>(null);
+  // Documents whose questions are being written right now, and when that
+  // started. Generation runs after the approval response is sent, so without
+  // this the teacher approved a deck, saw nothing happen, and only found the
+  // questions by refreshing on a hunch some minutes later.
+  const [awaitingQuestions, setAwaitingQuestions] = useState<Record<string, number>>({});
   const [conflicts, setConflicts] = useState<UploadConflict[]>([]);
   const pendingFormRef = useRef<FormData | null>(null);
   // Re-entry guard read synchronously; `uploading` state can be stale inside
@@ -260,7 +265,10 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   const busyRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const refresh = useCallback(async () => {
+  // Returns the documents it loaded, so a caller that needs to react to the
+  // new state can do so directly instead of reading a `documents` value its
+  // closure captured before the fetch.
+  const refresh = useCallback(async (): Promise<Doc[]> => {
     setLoading(true);
     try {
       // no-store: a plain GET can be served from the browser/HTTP cache,
@@ -271,7 +279,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
       setDiag(formatDiagnostics(data.timings as ListTimings | undefined, Math.round(performance.now() - startedAt), bytes));
       if (!res.ok) {
         setError((data.error as string | undefined) || "Couldn't load your uploads.");
-        return;
+        return [];
       }
       const next = (data.documents as Doc[] | undefined) ?? [];
       // Carry over chunk text already fetched for expanded documents — the
@@ -283,8 +291,10 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
           d.chunks.length === 0 && loaded.has(d.id) ? { ...d, chunks: loaded.get(d.id)! } : d,
         );
       });
+      return next;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't load your uploads.");
+      return [];
     } finally {
       setLoading(false);
     }
@@ -394,9 +404,15 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
   // most of the remaining wait. Longer documents (DOCX/PDF, which still use
   // the model) fall through to the slower interval rather than hammering the
   // endpoint for a minute.
+  // Polling used to stop the moment a document was approved — which is
+  // exactly when question generation STARTS. Approval is the beginning of the
+  // background work, not the end of it.
   const anyProcessing = documents.some(isProcessing);
+  const awaitingIds = Object.keys(awaitingQuestions);
+  const shouldPoll = anyProcessing || awaitingIds.length > 0;
+
   useEffect(() => {
-    if (!anyProcessing) return;
+    if (!shouldPoll) return;
     let cancelled = false;
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout>;
@@ -406,7 +422,24 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
       timer = setTimeout(async () => {
         if (cancelled) return;
         attempt += 1;
-        await refresh();
+        const latest = await refresh();
+
+        // Stop waiting on a document once its questions have landed, or once
+        // it has had long enough that they clearly are not coming — a
+        // generation failure must not leave the page polling forever.
+        setAwaitingQuestions((prev) => {
+          const next = { ...prev };
+          let changed = false;
+          for (const [id, startedAt] of Object.entries(prev)) {
+            const doc = latest.find((d) => d.id === id);
+            if ((doc && doc.pendingQuestionCount > 0) || Date.now() - startedAt > 180_000) {
+              delete next[id];
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+
         if (!cancelled) schedule();
       }, delay);
     };
@@ -416,7 +449,7 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [anyProcessing, refresh]);
+  }, [shouldPoll, refresh]);
 
   // Two-step, direct-to-storage upload: file bytes never pass through our
   // own server (Vercel functions cap request bodies at ~4.5 MB, far below a
@@ -699,11 +732,19 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
         setNotice(null);
         return;
       }
-      setNotice(
-        approved
-          ? "✓ Approved — this material is now part of your class corpus. You can generate practice questions from it below."
-          : "✗ Rejected — this material won't be used, and its extracted chunks have been discarded.",
-      );
+      if (approved) {
+        // Say what is happening NEXT, not only what just happened. Generation
+        // starts after this response is sent and takes tens of seconds, and
+        // the old message ("you can generate questions below") described a
+        // manual step that no longer exists — so the teacher had no reason to
+        // expect anything more and no idea it was already running.
+        setAwaitingQuestions((prev) => ({ ...prev, [documentId]: Date.now() }));
+        setNotice(
+          "✓ Approved — now writing practice questions from this material. It takes up to a minute, and this page updates itself.",
+        );
+      } else {
+        setNotice("✗ Rejected — this material won't be used, and its extracted chunks have been discarded.");
+      }
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't save your decision — please try again.");
@@ -928,6 +969,17 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
             {isProcessing(doc) && (
               <p className="mt-2 text-xs text-[var(--muted)]">
                 ✓ Uploaded — now extracting &amp; chunking in the background. This updates automatically.
+              </p>
+            )}
+
+            {/* The card itself has to say this. A one-off banner at the top of
+                the page is gone by the next render and can be far off-screen
+                for a document further down the list, which is how approving a
+                deck came to look like it did nothing at all. */}
+            {awaitingQuestions[doc.id] !== undefined && doc.pendingQuestionCount === 0 && (
+              <p className="mt-2 flex items-center gap-2 text-xs text-[var(--warn)]">
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                Writing practice questions from this material — usually under a minute.
               </p>
             )}
 
