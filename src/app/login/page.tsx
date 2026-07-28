@@ -17,7 +17,21 @@ function LoginButtons() {
     setPending(provider);
     const { error: signInError } = await supabaseBrowser().auth.signInWithOAuth({
       provider,
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        // Always show the account chooser.
+        //
+        // With one account signed into the browser, Google and Microsoft both
+        // skip it and re-authenticate silently — so signing out and pressing
+        // "Continue with Google" landed straight back in the same account,
+        // which looks like sign-out not working.
+        //
+        // It matters beyond testing: a school device is shared, and a student
+        // who follows the previous student's session is a real incident. The
+        // chooser is the only thing that makes "who am I signing in as" a
+        // decision rather than an assumption.
+        queryParams: { prompt: "select_account" },
+      },
     });
     if (signInError) {
       setError(signInError.message);
