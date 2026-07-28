@@ -44,11 +44,34 @@ export default async function Subjects() {
     <main className="mx-auto max-w-6xl px-6 py-10">
       <div className="mb-8 flex items-center justify-between">
         <Link href="/" className="text-sm text-[var(--muted)] hover:text-[var(--text)]">← Home</Link>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-[var(--muted)]">Grade 7 · Student</span>
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--brand)] text-sm font-semibold">L</span>
+        {/* Was hardcoded to "Grade 7 · Student" with an "L" avatar, left over
+            from the hackathon demo. Once real sign-in existed that became a
+            lie: a teacher saw a student's label above a page showing them
+            every document in the school, which reads as a security failure
+            rather than the staff preview it is. */}
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-[var(--muted)]">
+            {user?.displayName ?? "Signed in"}
+            {user ? <span className="ml-2 opacity-70">{ROLE_LABEL[user.role]}</span> : null}
+          </span>
+          <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--brand)] text-sm font-semibold">
+            {(user?.displayName ?? "?").trim().charAt(0).toUpperCase()}
+          </span>
+          <a href="/auth/signout" className="text-xs text-[var(--muted)] underline hover:text-[var(--text)]">
+            Sign out
+          </a>
         </div>
       </div>
+
+      {/* Staff see every approved document in the school, which is correct
+          and does not look correct: without saying so, a teacher checking the
+          student view reasonably concludes the material is not protected. */}
+      {visibility === "all" && (
+        <div className="mb-6 rounded-2xl border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-4 py-3 text-sm">
+          You are signed in as staff, so this page shows <strong>all</strong> approved material in the school. A
+          student sees only the classes they have joined with a code.
+        </div>
+      )}
 
       <h1 className="text-3xl font-bold tracking-tight">Good afternoon 👋</h1>
       <p className="mt-1 text-[var(--muted)]">Pick a subject to continue learning. Your AI learning assistant is ready.</p>
@@ -141,3 +164,10 @@ export default async function Subjects() {
     </main>
   );
 }
+
+const ROLE_LABEL: Record<string, string> = {
+  student: "Student",
+  teacher: "Teacher",
+  hod: "Head of department",
+  principal: "Principal",
+};
