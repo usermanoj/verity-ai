@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCite } from "./SourceCite";
+import { parseCite } from "./cite";
 
 describe("parseCite", () => {
   // The real string from production: one deck, nine sections, the filename

@@ -3,7 +3,7 @@ import { streamText } from "ai";
 import { AI_PROVIDER, aiModel, gatewayFailover, GATEWAY_FALLBACK_MODELS, hasApiKey, cachedSystem } from "@/lib/ai";
 import { hasLangfuse } from "@/lib/observability";
 import { logEvent } from "@/lib/events";
-import { buildSystemPrompt, fallbackReply, type Intent, type EslLevel } from "@/lib/tutor";
+import { buildSystemPrompt, fallbackReply, replyBudget, type Intent, type EslLevel } from "@/lib/tutor";
 import { contentRepo } from "@/lib/content-repo";
 import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
@@ -151,7 +151,10 @@ export async function POST(req: NextRequest) {
       try {
         const result = streamText({
           model: aiModel("primary"),
-          maxOutputTokens: 800,
+          // Scales with how many times the student has asked for more (see
+          // replyBudget) — a first answer that streams for twenty seconds is
+          // a first answer nobody reads.
+          maxOutputTokens: replyBudget(intent ?? "explain", turnNum).maxOutputTokens,
           system: cachedSystem(system),
           messages: [...priorTurns, { role: "user", content: userText }],
           experimental_telemetry: { isEnabled: hasLangfuse(), functionId: "tutor" },

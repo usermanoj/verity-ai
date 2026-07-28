@@ -53,6 +53,45 @@ function intentGuide(intent: Intent, turn: number): string {
   return INTENT_GUIDE[intent];
 }
 
+// How much the assistant is allowed to say, and how long the model may take
+// saying it.
+//
+// The first Explain used to return the whole topic — four headed sections and
+// a dozen bullets — into a chat column about 380px wide. That is slow to
+// generate, slow to read, and it front-loads everything onto a student who
+// asked one question. A twelve-year-old reading in a second language needs a
+// short answer and a way to ask for more.
+//
+// So depth is earned by tapping again. maxOutputTokens is the backstop, set
+// well above the word budget so a reply is never cut mid-sentence — the words
+// figure in the prompt is what actually does the work.
+export function replyBudget(intent: Intent, turn: number): { words: number; maxOutputTokens: number } {
+  // A translation is as long as the passage it translates; capping it would
+  // silently drop the end of the text.
+  if (intent === "translate") return { words: 0, maxOutputTokens: 800 };
+  // One Socratic question, or one hint. These were already short.
+  if (intent === "askme" || intent === "check") return { words: 45, maxOutputTokens: 200 };
+  const words = [55, 90, 130][Math.min(turn, 2)];
+  return { words, maxOutputTokens: words * 4 };
+}
+
+function lengthRule(intent: Intent, turn: number): string {
+  const { words } = replyBudget(intent, turn);
+  if (words === 0) return "";
+  if (intent === "askme" || intent === "check") return `\nLENGTH: at most ${words} words.`;
+  if (turn === 0) {
+    return (
+      `\nLENGTH — THIS IS THE FIRST ANSWER: at most ${words} words, and at most 3 bullet points. ` +
+      `Give ONLY the single most important idea. Do NOT try to cover the whole topic. ` +
+      `Finish with one short line telling the student to tap the button again to go deeper.`
+    );
+  }
+  return (
+    `\nLENGTH: at most ${words} words. The student has tapped this button ${turn + 1} times, so they want the NEXT ` +
+    `layer of detail — continue from what you already said, never restate it.`
+  );
+}
+
 export async function buildSystemPrompt(topicId: string, level: EslLevel, intent: Intent, turn = 0): Promise<string> {
   const chunks = await corpusForTopic(topicId);
   const meta = (await contentRepo.getTopic(topicId)) ?? (await contentRepo.getTopic("moments"))!;
@@ -66,12 +105,11 @@ You are a patient guide for English-as-a-Second-Language students at an internat
 ABSOLUTE RULES — follow every time:
 1. Answer ONLY using the APPROVED MATERIAL between <source> tags below. This is the school's own textbook/slides/worksheets.
 2. If the question cannot be answered from the approved material, say so briefly and steer the student back to the topic. Do NOT use outside/internet knowledge, and do NOT guess.
-3. ALWAYS end your reply with a citation line naming the source(s) you used, formatted exactly as:
-   "📖 Based on: <cite value>"
+3. Do NOT write a citation or "Based on:" line. Never name the source file, page or section number. The material is already in front of the student.
 4. NEVER complete a whole assignment or give the final numeric answer to a task the student must do. Guide, hint, and ask questions instead (academic integrity).
 5. Be encouraging and concise. ${LEVEL_GUIDE[level]}${progressNote}
 
-TASK MODE: ${intentGuide(intent, turn)}
+TASK MODE: ${intentGuide(intent, turn)}${lengthRule(intent, turn)}
 
 APPROVED MATERIAL:
 ${corpusBlock(chunks)}`;
