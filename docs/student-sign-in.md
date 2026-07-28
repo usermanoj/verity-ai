@@ -127,6 +127,26 @@ The users are children. A few points that hold regardless of option:
   "can a parent request this". Worth deciding before the first log is written
   rather than after.
 
+### What was decided
+
+Settled when logging was implemented, so it did not become an open question
+with data already accumulating.
+
+| Question | Answer |
+|---|---|
+| What is stored | The student's message, the assistant's reply, the intent, and any chunk cited. Attributed to the student and, where resolvable, the class. |
+| Who is logged | Students only. A teacher previewing their own lesson is not the subject of monitoring, and their traffic would distort a class's figures. |
+| Purpose | So a teacher can see whether the assistant is being used to learn or to shortcut — the product's most distinctive claim, and the one that had no data behind it. |
+| Retention | **400 days** — one academic year plus a margin. Long enough to look back over a term; short enough that a transcript does not follow a child through the school. |
+| Deletion on request | `erase_student_history(student_id)` removes a student's conversations and practice attempts, and returns the counts so a request can be answered with a number rather than a reassurance. |
+| Who can run those | Service role only. Neither is granted to `authenticated`: both are destructive and rare, and should not be reachable from a session a misconfigured route could expose. |
+
+Neither the purge nor the erasure runs on a schedule by itself. **Retention is
+not enforced until `purge_old_conversations()` is scheduled** — via Supabase
+cron or an external job. A destructive job that silently enables itself is not
+something to bury in a migration, but an unscheduled one means the policy above
+is a statement of intent rather than a fact. Schedule it before a pilot.
+
 ---
 
 ## Recommendation
