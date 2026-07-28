@@ -1,3 +1,4 @@
+import SessionBadge from "@/components/SessionBadge";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AiTutorPanel from "@/components/tutor/AiTutorPanel";
@@ -52,13 +53,19 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
         <Link href="/subjects" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--text)]">
           ← Subjects
         </Link>
-        <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
+        <div className="flex items-center gap-3 text-sm text-[var(--muted)]">
           {topic.subject && (
             <span className="rounded-full bg-[rgba(34,211,238,0.15)] px-3 py-1 text-[var(--brand2)]">
               📚 {topic.subject}
             </span>
           )}
           {topic.grade && <span>{topic.grade}</span>}
+          {/* The lesson page is where a student actually spends the hour, and
+              it was the one place showing neither who they are nor a way out.
+              Signing in and then seeing no name reads as not having signed in
+              — and on a shared classroom device, "whose account is this?" has
+              to be answerable without navigating away from the work. */}
+          <SessionBadge />
         </div>
       </div>
 

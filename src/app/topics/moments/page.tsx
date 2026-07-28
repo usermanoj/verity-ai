@@ -1,5 +1,6 @@
 "use client";
 
+import SessionBadgeClient from "@/components/SessionBadgeClient";
 import Link from "next/link";
 import { useState } from "react";
 import { motion } from "framer-motion";
@@ -20,9 +21,10 @@ export default function MomentsTopic() {
     <main className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <Link href="/subjects" className="text-sm text-[var(--muted)] hover:text-[var(--text)]">← Subjects</Link>
-        <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
+        <div className="flex items-center gap-3 text-sm text-[var(--muted)]">
           <span className="rounded-full bg-[rgba(34,211,238,0.15)] px-3 py-1 text-[var(--brand2)]">🧲 Physics</span>
           <span>Grade 7</span>
+          <SessionBadgeClient />
         </div>
       </div>
 
