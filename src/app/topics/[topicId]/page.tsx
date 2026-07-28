@@ -5,7 +5,7 @@ import AiTutorPanel from "@/components/tutor/AiTutorPanel";
 import LessonSections from "@/components/topic/LessonSections";
 import LessonNav from "@/components/topic/LessonNav";
 import PracticeZone from "@/components/practice/PracticeZone";
-import { contentRepo, pageOf } from "@/lib/content-repo";
+import { contentRepo } from "@/lib/content-repo";
 import { requireSignedIn } from "@/lib/auth";
 import { canSee, visibleDocuments } from "@/lib/access";
 
@@ -47,15 +47,6 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
   const sourceFile = chunks[0]?.source.split(" — ")[0] ?? "";
   const headings = chunks.map((c, i) => ({ id: `section-${i + 1}`, title: c.heading?.trim() || `Section ${i + 1}` }));
 
-  // Citations name a page/section number from the source file; the anchors on
-  // this page are positional. They are NOT the same number once a deck skips
-  // a page, so the map is built from the citations themselves rather than
-  // assumed — a chip that scrolls to the wrong passage is worse than one that
-  // doesn't scroll at all.
-  const sectionAnchors: Record<string, string> = {};
-  chunks.forEach((c, i) => {
-    sectionAnchors[String(pageOf(c.source))] = `section-${i + 1}`;
-  });
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
@@ -145,7 +136,7 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
         </div>
 
         <div className="lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)]">
-          <AiTutorPanel topicId={topicId} topicTitle={topic.title} sectionAnchors={sectionAnchors} />
+          <AiTutorPanel topicId={topicId} topicTitle={topic.title} />
         </div>
       </div>
     </main>
