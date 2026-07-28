@@ -19,7 +19,13 @@ export default function RichText({ text }: { text: string }) {
 function renderBlocks(text: string): ReactNode[] {
   const lines = text.split("\n");
   const blocks: ReactNode[] = [];
-  let list: { ordered: boolean; items: string[] } | null = null;
+  // `start` is why a four-step answer rendered as "1. 1. 1. 1.": the tutor
+  // writes a numbered step, then bullets under it, then the next step. The
+  // bullets (and the blank lines around them) close the <ol>, so every step
+  // opened a fresh list that restarted its own count at one. Carrying the
+  // number the model actually wrote keeps the sequence intact however the
+  // list is interrupted.
+  let list: { ordered: boolean; items: string[]; start: number } | null = null;
   let paragraph: string[] = [];
 
   const flushParagraph = () => {
@@ -34,14 +40,22 @@ function renderBlocks(text: string): ReactNode[] {
 
   const flushList = () => {
     if (!list) return;
-    const items = list.items.map((item, i) => <li key={i}>{inline(item)}</li>);
+    const items = list.items.map((item, i) => (
+      <li key={i} className="pl-1 leading-relaxed">
+        {inline(item)}
+      </li>
+    ));
     blocks.push(
       list.ordered ? (
-        <ol key={`l-${blocks.length}`} className="ml-5 list-decimal space-y-1">
+        <ol
+          key={`l-${blocks.length}`}
+          start={list.start}
+          className="ml-5 list-decimal space-y-1.5 marker:font-semibold marker:text-[var(--brand2)]"
+        >
           {items}
         </ol>
       ) : (
-        <ul key={`l-${blocks.length}`} className="ml-5 list-disc space-y-1">
+        <ul key={`l-${blocks.length}`} className="ml-5 list-disc space-y-1.5 marker:text-[var(--brand2)]">
           {items}
         </ul>
       ),
@@ -67,15 +81,15 @@ function renderBlocks(text: string): ReactNode[] {
     // Indented sub-bullets are flattened into the same list rather than
     // nested — the tutor only ever goes one level deep in practice.
     const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
-    const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    const numbered = /^\s*(\d+)[.)]\s+(.*)$/.exec(line);
     if (bullet || numbered) {
       flushParagraph();
       const ordered = Boolean(numbered);
       if (!list || list.ordered !== ordered) {
         flushList();
-        list = { ordered, items: [] };
+        list = { ordered, items: [], start: numbered ? Number(numbered[1]) : 1 };
       }
-      list.items.push((bullet ?? numbered)![1]);
+      list.items.push(numbered ? numbered[2] : bullet![1]);
       continue;
     }
 
@@ -94,9 +108,9 @@ function renderBlocks(text: string): ReactNode[] {
   return blocks;
 }
 
-// **bold**, *italic* and `code`, applied in one pass so the delimiters can't
-// be mistaken for each other.
-const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*\n]+\*)/g;
+// **bold**, *italic*, `code`, and the [plain-word gloss] the ESL prompt asks
+// for, applied in one pass so the delimiters can't be mistaken for each other.
+const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*\n]+\*|\[[^\]\n]+\])/g;
 
 function inline(text: string): ReactNode {
   const parts = text.split(INLINE).filter((p) => p !== "");
@@ -117,6 +131,16 @@ function inline(text: string): ReactNode {
     }
     if (part.startsWith("*") && part.endsWith("*")) {
       return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+    // The ESL prompt glosses hard words inline — "attracted [pulled] by a
+    // magnet". Rendered flat it reads as a typo; set back a shade it reads as
+    // the help it is, and the sentence still scans without it.
+    if (part.startsWith("[") && part.endsWith("]")) {
+      return (
+        <span key={i} className="text-[0.92em] text-[var(--muted)]">
+          {part}
+        </span>
+      );
     }
     return <Fragment key={i}>{part}</Fragment>;
   });
