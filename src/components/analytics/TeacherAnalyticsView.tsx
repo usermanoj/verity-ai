@@ -1,10 +1,17 @@
 import { Locked, Panel, Stat, StackedBar, Trend } from "./charts";
-import type { TeacherAnalytics } from "@/lib/analytics";
+import { TeacherLearningPanels } from "./LearningPanels";
+import type { TeacherAnalytics, TeacherLearning } from "@/lib/analytics";
 
 // What a teacher needs from a dashboard during rollout is not a leaderboard.
 // It is: what is live to my students, what is waiting on me, and where are
 // the holes. Every number below is counted from their own uploads.
-export default function TeacherAnalyticsView({ data }: { data: TeacherAnalytics }) {
+export default function TeacherAnalyticsView({
+  data,
+  learning,
+}: {
+  data: TeacherAnalytics;
+  learning: TeacherLearning | null;
+}) {
   const sectionsWithout = data.sections.filter((s) => !s.hasMaterial);
   const needsAttention = data.documents.pending + data.questions.pending;
 
@@ -79,11 +86,23 @@ export default function TeacherAnalyticsView({ data }: { data: TeacherAnalytics 
         <Trend points={data.weekly} />
       </Panel>
 
-      <Locked title="How your students are doing" needs="student sign-in">
-        Attempts, scores, which topics a class struggles with, and who is asking the assistant for answers rather than
-        explanations — all of it needs students to be signed in, so their work can be attributed. Nothing is recorded
-        today, so nothing is shown.
-      </Locked>
+      {/* Real once students have answered something. The locked state is kept
+          rather than deleted: a school with no student activity yet should be
+          told why the panel is empty, not shown zeroes that look like a
+          finding. */}
+      {learning && learning.overall.attempts > 0 ? (
+        <>
+          <h2 className="pt-2 text-sm font-semibold uppercase tracking-widest text-[var(--muted)]">
+            How your students are doing
+          </h2>
+          <TeacherLearningPanels data={learning} />
+        </>
+      ) : (
+        <Locked title="How your students are doing" needs="students to join and practise">
+          Attempts, scores, which topics a class struggles with, and who is asking the assistant for answers rather
+          than explanations. Nothing has been recorded yet, so nothing is shown.
+        </Locked>
+      )}
     </div>
   );
 }

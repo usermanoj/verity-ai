@@ -1,13 +1,13 @@
 import Link from "next/link";
 import SchoolAnalyticsView from "@/components/analytics/SchoolAnalyticsView";
-import { getSchoolAnalytics } from "@/lib/analytics";
+import { getSchoolAnalytics, getSchoolLearning } from "@/lib/analytics";
 import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function HodPage() {
   await requireRole("hod", "/hod");
-  const data = await getSchoolAnalytics();
+  const [data, learning] = await Promise.all([getSchoolAnalytics(), getSchoolLearning()]);
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
@@ -23,7 +23,7 @@ export default async function HodPage() {
 
       <div className="mt-8">
         {data ? (
-          <SchoolAnalyticsView data={data} scope="department" />
+          <SchoolAnalyticsView data={data} learning={learning} scope="department" />
         ) : (
           <p className="text-sm text-[var(--muted)]">Couldn&apos;t load the figures just now — please refresh.</p>
         )}
