@@ -18,7 +18,16 @@ export type ClassCode = {
 // Shown large and spaced, because the realistic delivery mechanism is a
 // projector and a room of twelve-year-olds copying it down. The code alphabet
 // already excludes 0/O and 1/I/L for the same reason.
-export default function ClassCodes({ initial }: { initial: ClassCode[] }) {
+export default function ClassCodes({
+  initial,
+  qrFor,
+}: {
+  initial: ClassCode[];
+  // Rendered on the server (JoinQr needs the request's origin and the qrcode
+  // library), passed in per class so this component stays a client component
+  // without pulling an encoder into the browser bundle.
+  qrFor?: Record<string, React.ReactNode>;
+}) {
   const [rows, setRows] = useState(initial);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -101,6 +110,20 @@ export default function ClassCodes({ initial }: { initial: ClassCode[] }) {
             ) : (
               <span className="text-sm text-[var(--muted)]">No code yet</span>
             )}
+
+            {row.code && qrFor?.[row.classId] ? (
+              <details className="relative">
+                <summary className={`cursor-pointer rounded-xl border border-[var(--border)] px-3 py-2 text-xs text-[var(--muted)] hover:text-[var(--text)] ${PRESSABLE}`}>
+                  Show QR
+                </summary>
+                <div className="absolute right-0 z-10 mt-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-2)] p-3 shadow-2xl">
+                  {qrFor[row.classId]}
+                  <p className="mt-2 max-w-[9rem] text-[11px] leading-snug text-[var(--muted)]">
+                    Project this. Students scan, sign in, and the code is already filled in.
+                  </p>
+                </div>
+              </details>
+            ) : null}
 
             <button
               onClick={() => rotate(row.classId, Boolean(row.code))}

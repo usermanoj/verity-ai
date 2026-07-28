@@ -9,9 +9,12 @@ import { PRESSABLE } from "@/lib/ui";
 // Shown when a signed-in student is in no classes, which after the access
 // gate means they can see nothing at all. Without this the page would be an
 // empty room with no door — correct, and useless.
-export default function JoinClass() {
+// initialCode arrives from a scanned QR (/join?code=…). Prefilled rather than
+// auto-submitted: a student should see what they are joining and press the
+// button, so a stray scan or a stale printout does not silently enrol them.
+export default function JoinClass({ initialCode = "" }: { initialCode?: string }) {
   const router = useRouter();
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialCode.toUpperCase());
   const [status, setStatus] = useState<"idle" | "joining" | "joined">("idle");
   const [error, setError] = useState<string | null>(null);
 
