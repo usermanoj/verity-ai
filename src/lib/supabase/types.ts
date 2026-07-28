@@ -198,6 +198,63 @@ export type Database = {
         };
         Relationships: [];
       };
+      conversations: {
+        Row: {
+          id: string;
+          student_id: string;
+          // Nullable since 0017: the seeded demo topics belong to no class,
+          // and a conversation that cannot be recorded would otherwise have
+          // to be silently dropped.
+          class_id: string | null;
+          topic_id: string;
+          started_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          class_id?: string | null;
+          topic_id: string;
+          started_at?: string;
+        };
+        Update: {
+          id?: string;
+          student_id?: string;
+          class_id?: string | null;
+          topic_id?: string;
+          started_at?: string;
+        };
+        Relationships: [];
+      };
+      conversation_turns: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          role: "user" | "assistant";
+          intent: string | null;
+          text: string;
+          cited_chunk_ids: string[];
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          role: "user" | "assistant";
+          intent?: string | null;
+          text: string;
+          cited_chunk_ids?: string[];
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          conversation_id?: string;
+          role?: "user" | "assistant";
+          intent?: string | null;
+          text?: string;
+          cited_chunk_ids?: string[];
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       class_enrollments: {
         Row: {
           class_id: string;

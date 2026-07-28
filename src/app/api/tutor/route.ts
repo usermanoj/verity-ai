@@ -8,6 +8,7 @@ import { contentRepo } from "@/lib/content-repo";
 import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
 import { canSee, visibleDocuments } from "@/lib/access";
+import { conversationFor, logTurn } from "@/lib/conversations";
 
 export const runtime = "nodejs";
 
@@ -77,9 +78,11 @@ export async function POST(req: NextRequest) {
   // Skipped entirely when Supabase isn't configured, so a preview deployment
   // stays in demo mode on the seeded topics rather than refusing every
   // request it has no way to authorise.
+  let viewer: Awaited<ReturnType<typeof getCurrentAppUser>> = null;
   if (hasSupabase()) {
     const user = await getCurrentAppUser();
     if (!user) return jsonError("Please sign in to use the assistant.", 401);
+    viewer = user;
     if (!canSee(await visibleDocuments(user), topic)) {
       // Same wording as an unknown topic: a refusal should not reveal that
       // this document exists.
@@ -121,8 +124,15 @@ export async function POST(req: NextRequest) {
 
   void logEvent("tutor_message", { intent, topicId: topic, demo: false });
 
+  // Opened before streaming so the student's question is recorded even if the
+  // model call then fails — a transcript that only keeps the exchanges that
+  // went well is not a record of how a student is doing.
+  const conversationId = await conversationFor(viewer, topic);
+  await logTurn(conversationId, "user", userText, intent);
+
   const stream = new ReadableStream({
     async start(controller) {
+      let assistantText = "";
       try {
         const result = streamText({
           model: aiModel("primary"),
@@ -135,6 +145,7 @@ export async function POST(req: NextRequest) {
         let receivedAnyText = false;
         for await (const textDelta of result.textStream) {
           receivedAnyText = true;
+          assistantText += textDelta;
           controller.enqueue(jsonLine({ type: "delta", text: textDelta }));
         }
         // A model can fail (plan restriction, provider error) without ever
@@ -153,6 +164,16 @@ export async function POST(req: NextRequest) {
         controller.enqueue(jsonLine({ type: "done", error: true }));
       } finally {
         controller.close();
+        // After close, so recording never delays the last token reaching the
+        // student. The invocation stays alive for the stream, so this still
+        // runs — and if it doesn't, the reply was already delivered.
+        void logTurn(
+          conversationId,
+          "assistant",
+          assistantText,
+          intent,
+          contextChunkId ? [contextChunkId] : [],
+        );
       }
     },
   });
