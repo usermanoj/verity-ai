@@ -6,7 +6,12 @@ import { GLOSSARY } from "@/data/corpus";
 // Highlights approved glossary terms; hover/tap shows an EN + 中文 gloss.
 export default function ReadingText({ text }: { text: string }) {
   const [active, setActive] = useState<string | null>(null);
-  const terms = Object.keys(GLOSSARY);
+  // Longest first. Regex alternation takes the first branch that matches at a
+  // position, so with "magnetic" ahead of "magnetic field" the phrase could
+  // never win — the student would get the gloss for the adjective and the
+  // word "field" left bare. Same for "pole" shadowing "north pole", and
+  // "speed" shadowing "steady speed".
+  const terms = Object.keys(GLOSSARY).sort((a, b) => b.length - a.length);
   const pattern = new RegExp(`\\b(${terms.join("|")})\\b`, "gi");
   const parts = text.split(pattern);
 

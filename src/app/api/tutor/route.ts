@@ -109,7 +109,16 @@ export async function POST(req: NextRequest) {
     return new Response(stream, { headers: { "Content-Type": "application/x-ndjson" } });
   }
 
-  const system = await buildSystemPrompt(topic, level ?? "intermediate", intent ?? "explain", turnNum);
+  // Whether the student typed anything, as opposed to tapping the button
+  // again — the prompt treats those very differently (see intentGuide).
+  const studentReplied = typeof question === "string" && question.trim().length > 0;
+  const system = await buildSystemPrompt(
+    topic,
+    level ?? "intermediate",
+    intent ?? "explain",
+    turnNum,
+    studentReplied,
+  );
 
   let userText: string;
   if (intent === "check") {
