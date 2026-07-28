@@ -141,11 +141,18 @@ with data already accumulating.
 | Deletion on request | `erase_student_history(student_id)` removes a student's conversations and practice attempts, and returns the counts so a request can be answered with a number rather than a reassurance. |
 | Who can run those | Service role only. Neither is granted to `authenticated`: both are destructive and rare, and should not be reachable from a session a misconfigured route could expose. |
 
-Neither the purge nor the erasure runs on a schedule by itself. **Retention is
-not enforced until `purge_old_conversations()` is scheduled** — via Supabase
-cron or an external job. A destructive job that silently enables itself is not
-something to bury in a migration, but an unscheduled one means the policy above
-is a statement of intent rather than a fact. Schedule it before a pilot.
+Erasure is run on request and has no schedule. Retention does: migration 0019
+schedules `run_retention(400)` daily at 18:00 UTC — 02:00 in Singapore, so a
+large delete never lands during a lesson.
+
+Each run is recorded in `retention_runs` with the date and the number of
+conversations removed. That table is the answer to "how do you know the policy
+is being applied", which a promise on its own cannot give. Rows showing
+`conversations_deleted = 0` are the healthy state until the database is older
+than the retention window; an empty table would mean the job is not firing.
+
+    select jobname, schedule, active from cron.job where jobname = 'verity-retention';
+    select * from public.retention_runs order by ran_at desc limit 10;
 
 ---
 
