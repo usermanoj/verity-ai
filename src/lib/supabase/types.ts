@@ -358,6 +358,18 @@ export type Database = {
         Args: { p_limit?: number };
         Returns: unknown;
       };
+      // Curriculum-readiness analytics. Both are role-gated inside the
+      // function and return nothing at all to a caller without the role, so
+      // the page never has to decide whether it may see this.
+      // See supabase/migrations/0015_analytics.sql.
+      teacher_analytics: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
+      school_analytics: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
       // Single-round-trip upload authorisation — role gate, course/section
       // get-or-create, and the document + mapping inserts. Identity comes
       // from auth.uid() inside the function, so there's no user-id argument
