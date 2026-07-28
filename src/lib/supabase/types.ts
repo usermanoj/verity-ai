@@ -41,6 +41,7 @@ export type Database = {
           id: string;
           student_id: string;
           question_id: string;
+          generated_question_id: string | null;
           answer: string;
           graded_result: Record<string, unknown>;
           graded_by: "rule" | "llm";
@@ -50,6 +51,7 @@ export type Database = {
           id?: string;
           student_id: string;
           question_id: string;
+          generated_question_id?: string | null;
           answer: string;
           graded_result: Record<string, unknown>;
           graded_by: "rule" | "llm";
@@ -59,6 +61,7 @@ export type Database = {
           id?: string;
           student_id?: string;
           question_id?: string;
+          generated_question_id?: string | null;
           answer?: string;
           graded_result?: Record<string, unknown>;
           graded_by?: "rule" | "llm";
