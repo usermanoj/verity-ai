@@ -21,6 +21,13 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
   const [result, setResult] = useState<ReturnType<typeof grade> | null>(null);
   const [streak, setStreak] = useState(0);
   const [wrong, setWrong] = useState(0);
+  // Attempts at the CURRENT question, and whether the answer has been asked
+  // for. Revealing on the first wrong attempt ended the question then and
+  // there — a student who misread it, or mistyped, had no way to try again,
+  // and the most valuable moment in practice is the one where you correct
+  // yourself. Two attempts, or ask outright if you're stuck.
+  const [attempts, setAttempts] = useState(0);
+  const [askedForAnswer, setAskedForAnswer] = useState(false);
 
   const visible = level === "All" ? bank : bank.filter((b) => b.level === level);
   // Filtering can leave the index past the end of a shorter list; clamping
@@ -34,16 +41,23 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
     Challenge: bank.filter((b) => b.level === "Challenge").length,
   };
 
+  function resetQuestion() {
+    setInput("");
+    setResult(null);
+    setAttempts(0);
+    setAskedForAnswer(false);
+  }
+
   function chooseLevel(next: Level | "All") {
     setLevel(next);
     setIdx(0);
-    setInput("");
-    setResult(null);
+    resetQuestion();
   }
 
   function check() {
     const r = grade(item.question, input);
     setResult(r);
+    setAttempts((a) => a + 1);
     if (r.correct) {
       setStreak((s) => s + 1);
       setWrong(0);
@@ -70,9 +84,13 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
     } else {
       setIdx((i) => (i + 1) % Math.max(1, visible.length));
     }
-    setInput("");
-    setResult(null);
+    resetQuestion();
   }
+
+  // A wrong answer is revealed on the second attempt, or immediately if the
+  // student asks. One attempt is not enough to rule out a misread or a typo;
+  // three would be badgering.
+  const revealAnswer = attempts >= 2 || askedForAnswer;
 
   // Adaptive suggestion after grading
   const adaptive =
@@ -159,14 +177,22 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
             <div className="mt-1 text-[var(--text)]/85">{result.feedback}</div>
 
             {/* Shown for every question kind, not folded into the sentence
-                above. This is practice, not an exam: numeric and true/false
-                used to say "not quite" and leave a student with no way to
-                find out what the answer actually was, which teaches nothing
-                and is where a discouraged student stops. */}
-            {result.correctAnswer && (
+                above — numeric and true/false used to say "not quite" and
+                leave a student with no way to find out what the answer was.
+                But held back until a second attempt, or until it's asked
+                for: revealing on the first wrong answer ended the question
+                then and there, and correcting yourself is the part of
+                practice that actually teaches. */}
+            {result.correctAnswer && revealAnswer && (
               <div className="mt-2 rounded-xl bg-black/25 px-3 py-2">
                 <span className="text-[11px] uppercase tracking-widest text-[var(--muted)]">Answer</span>
                 <div className="text-[var(--good)]">{result.correctAnswer}</div>
+              </div>
+            )}
+
+            {result.correctAnswer && !revealAnswer && (
+              <div className="mt-2 text-xs text-[var(--muted)]">
+                Have another go — check your working, then press Check again.
               </div>
             )}
             {(item.question.kind === "numeric") && (
@@ -179,7 +205,26 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
             <div className="mt-2 text-[11px] text-[var(--muted)]">📖 {item.source}</div>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              {adaptive && (
+              {/* A first wrong attempt offers the retry first and keeps
+                  "Next question" available, so nobody is held on a question
+                  they've decided to leave. */}
+              {!result.correct && !revealAnswer && (
+                <>
+                  <button
+                    onClick={() => setResult(null)}
+                    className="rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-medium text-white"
+                  >
+                    ↻ Try again
+                  </button>
+                  <button
+                    onClick={() => setAskedForAnswer(true)}
+                    className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)]"
+                  >
+                    Show answer
+                  </button>
+                </>
+              )}
+              {adaptive && (result.correct || revealAnswer) && (
                 <button onClick={() => next(adaptive.level)} className="rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-medium text-white">
                   {adaptive.label}
                 </button>
