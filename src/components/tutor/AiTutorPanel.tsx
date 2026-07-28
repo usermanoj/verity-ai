@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CHECKABLE_CHUNK_IDS } from "@/lib/tutor";
 import RichText from "./RichText";
@@ -46,6 +46,34 @@ function nextId(): string {
   return `m${idCounter}`;
 }
 
+// What the student's own bubble should say on a repeat tap.
+//
+// Every press of Explain read "Explain: Help me with Magnets and
+// Electromagnets" — three identical bubbles in a row, while the answers were
+// in fact moving through quite different sub-topics. The transcript lost the
+// thread of its own conversation.
+//
+// The assistant names the sub-topic it is moving to in bold on its opening
+// line ("Now go deeper into **how an electromagnet works**"), so the label
+// borrows it. That keeps both sides of the transcript talking about the same
+// thing without asking the model for anything extra.
+const LEAD_BOLD = /\*\*([^*\n]{3,60})\*\*/;
+
+export function followUpLabel(
+  fallback: string,
+  turn: number,
+  typed: string,
+  lastAiText: string | undefined,
+): string {
+  // A student who typed their own words always sees their own words.
+  if (typed) return typed;
+  if (turn === 0) return fallback;
+
+  const lead = (lastAiText ?? "").split("\n").find((l) => l.trim().length > 0) ?? "";
+  const subject = LEAD_BOLD.exec(lead)?.[1]?.trim();
+  return subject ? `more on ${subject}` : "go deeper";
+}
+
 // The prompt now forbids a citation line, but a model that slips back into
 // the habit must not leak "Based on: deck.pptx — Page/Section 4" into the
 // reply. Splitting keeps the body clean whether or not one arrives; only the
@@ -86,14 +114,41 @@ function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
   );
 }
 
-function speak(text: string) {
+// The one interval currently keeping speech alive, so stopSpeaking can clear
+// it. Without this, cancelling left a timer calling pause()/resume() on a
+// dead synth every 5 seconds for the rest of the session.
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+
+// Starting was the only thing you could do. A minute of synthesised speech
+// with no way to stop it is worse than no read-aloud at all — in a classroom
+// it's a student holding a talking tablet, and for anyone using this as an
+// accessibility aid it's a trap.
+export function stopSpeaking() {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
+  window.speechSynthesis.cancel();
+}
+
+function speak(text: string, onFinished?: () => void) {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
   const synth = window.speechSynthesis;
-  synth.cancel();
+  stopSpeaking();
   const segments = splitByLanguage(text);
   let i = 0;
   const speakNext = () => {
-    if (i >= segments.length) return;
+    if (i >= segments.length) {
+      // Reaching the end is as much "no longer speaking" as pressing stop —
+      // the button has to return to "Read aloud" either way.
+      if (keepAliveTimer) {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
+      }
+      onFinished?.();
+      return;
+    }
     const seg = segments[i++];
     const u = new SpeechSynthesisUtterance(seg.text);
     u.lang = seg.lang;
@@ -106,9 +161,10 @@ function speak(text: string) {
   };
   speakNext();
   // Chrome workaround: long speech silently halts unless kept alive.
-  const keepAlive = setInterval(() => {
+  keepAliveTimer = setInterval(() => {
     if (!synth.speaking) {
-      clearInterval(keepAlive);
+      if (keepAliveTimer) clearInterval(keepAliveTimer);
+      keepAliveTimer = null;
       return;
     }
     synth.pause();
@@ -171,6 +227,7 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
   const [level, setLevel] = useState<EslLevel>("intermediate");
   const [loading, setLoading] = useState<Intent | null>(null);
   const [showCheck, setShowCheck] = useState(false);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const turnCounts = useRef<Partial<Record<Intent, number>>>({});
   // Which conversational mode the free-text box continues when you hit Enter —
@@ -178,20 +235,47 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
   // question got mislabelled and answered as an unrelated new explanation.
   const [lastIntent, setLastIntent] = useState<Intent>("explain");
 
-  // The most recent grounded corpus chunk that is an actual numeric worked
-  // example (not a bare definition/principle) — the only thing "Check My
-  // Answer" can sensibly check against.
+  // Both gates below used to require m.chunkId, which is ONLY ever set by the
+  // offline demo replies — a real model returns no sourceId. So against a
+  // live provider "Check My Answer" and "Translate" were permanently greyed
+  // out: two of the five buttons were dead for every actual student, while
+  // the caption underneath cheerfully explained how to unlock them.
+  //
+  // The gates now read the conversation, which is what they were always
+  // describing.
+
+  // Something has been put to the student that they could attempt: a worked
+  // example ends with "now you try", and askme IS a question.
+  const canCheck = messages.some((m) => m.role === "ai" && (m.intent === "example" || m.intent === "askme"));
+  // Anything real to translate — the opening greeting has no intent, and a
+  // translation of a translation isn't meaningful.
+  const canTranslate = messages.some((m) => m.role === "ai" && m.intent !== undefined && !m.isTranslation);
+
+  // Demo mode still pins the answer to a specific numeric worked example, so
+  // the "Checking against" hint can name it.
   const lastCheckableChunkId = [...messages]
     .reverse()
     .find((m) => m.role === "ai" && m.chunkId && CHECKABLE_CHUNK_IDS.includes(m.chunkId))?.chunkId;
-  const canCheck = !!lastCheckableChunkId;
-  // Translate needs at least one real grounded explanation to translate —
-  // translating the generic greeting isn't useful, and there'd be no
-  // reviewed-translation match for it in demo mode.
-  const canTranslate = messages.some((m) => m.role === "ai" && m.chunkId && !m.isTranslation);
   const checkableChunk = lastCheckableChunkId
     ? messages.find((m) => m.chunkId === lastCheckableChunkId)?.citeLabel
     : undefined;
+
+  // Speech is a browser-level singleton, not part of this component's tree —
+  // navigating to another lesson would otherwise leave it talking to an empty
+  // page with the stop button gone.
+  useEffect(() => stopSpeaking, []);
+
+  // Which message is being read aloud, so its button can offer the way out.
+  // Tapping the same one again stops it; tapping a different one switches.
+  function toggleSpeak(id: string, text: string) {
+    if (speakingId === id) {
+      stopSpeaking();
+      setSpeakingId(null);
+      return;
+    }
+    setSpeakingId(id);
+    speak(text, () => setSpeakingId((current) => (current === id ? null : current)));
+  }
 
   function scrollToBottom() {
     scrollRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
@@ -209,6 +293,17 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
     setQuestion("");
     setAnswer("");
 
+    // The rotation/"turn" for explain/example/askme should only advance if
+    // the student is CONTINUING that same thread with nothing else in
+    // between — otherwise Explain kept saying "let's go deeper" forever,
+    // even after the student had done several unrelated things.
+    //
+    // Computed before the label because the label depends on it.
+    const lastAiTurn = [...messages].reverse().find((m) => m.role === "ai");
+    const sameThread = lastAiTurn?.intent === intent;
+    const turn = sameThread ? (turnCounts.current[intent] ?? 0) : 0;
+    turnCounts.current[intent] = turn + 1;
+
     const label = BUTTONS.find((b) => b.intent === intent)?.label ?? intent;
     const userRaw = intent === "check" ? ans : q;
     setMessages((m) => [
@@ -216,7 +311,10 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
       {
         id: nextId(),
         role: "user",
-        text: intent === "check" ? `Check my answer: ${ans || "(my working)"}` : `${label}: ${q}`,
+        text:
+          intent === "check"
+            ? `Check my answer: ${ans || "(my working)"}`
+            : `${label}: ${followUpLabel(q, turn, question.trim(), lastAiTurn?.text)}`,
         raw: userRaw,
       },
     ]);
@@ -243,15 +341,6 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
         ]);
         return;
       }
-
-      // The rotation/"turn" for explain/example/askme should only advance if
-      // the student is CONTINUING that same thread with nothing else in
-      // between — otherwise Explain kept saying "let's go deeper" forever,
-      // even after the student had done several unrelated things.
-      const lastAiTurn = [...messages].reverse().find((m) => m.role === "ai");
-      const sameThread = lastAiTurn?.intent === intent;
-      const turn = sameThread ? (turnCounts.current[intent] ?? 0) : 0;
-      turnCounts.current[intent] = turn + 1;
 
       // Which numeric worked example the conversation is about — needed so
       // "Check My Answer" hints at the RIGHT problem (never a bare
@@ -369,7 +458,17 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
                 )}
                 {m.role === "ai" && !m.streaming && (
                   <div className="mt-1.5 flex items-center gap-3">
-                    <button onClick={() => speak(m.text)} className="text-xs text-[var(--muted)] hover:text-[var(--text)]">🔊 Read aloud</button>
+                    <button
+                      onClick={() => toggleSpeak(m.id, m.text)}
+                      aria-pressed={speakingId === m.id}
+                      className={`text-xs transition ${
+                        speakingId === m.id
+                          ? "font-medium text-[var(--brand2)]"
+                          : "text-[var(--muted)] hover:text-[var(--text)]"
+                      }`}
+                    >
+                      {speakingId === m.id ? "⏹ Stop" : "🔊 Read aloud"}
+                    </button>
                     {m.demo && <span className="text-[10px] text-[var(--warn)]">demo mode (no API key)</span>}
                   </div>
                 )}

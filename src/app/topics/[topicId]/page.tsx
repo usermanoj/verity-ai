@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import AiTutorPanel from "@/components/tutor/AiTutorPanel";
 import LessonSections from "@/components/topic/LessonSections";
 import LessonNav from "@/components/topic/LessonNav";
+import HashTarget from "@/components/topic/HashTarget";
 import PracticeZone from "@/components/practice/PracticeZone";
 import { contentRepo } from "@/lib/content-repo";
 import { requireSignedIn } from "@/lib/auth";
@@ -125,6 +126,10 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
 
           {bank.length > 0 ? (
             <div id="practice" className="scroll-mt-24">
+              {/* Re-applies the jump while images below are still loading —
+                  without it the anchor lands, then the layout grows underneath
+                  and leaves the student mid-lesson. */}
+              <HashTarget id="practice" />
               <PracticeZone key={topicId} bank={bank} />
             </div>
           ) : (

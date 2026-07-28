@@ -38,16 +38,43 @@ const INTENT_GUIDE: Record<Intent, string> = {
   translate: "Translate faithfully; keep physics terms accurate.",
 };
 
-// "askme" needs a different instruction once the student has actually replied
-// to the previous guiding question — otherwise the model just fires more
-// unrelated questions instead of honestly reacting to what the student said.
+// A student who types "d o" or "do not know" has not asked for anything —
+// they have failed to answer, and that is a teaching moment, not a parsing
+// error. Both continuation modes below need to say so.
+const UNUSABLE_REPLY_RULE =
+  " If their reply is blank, gibberish (\"d o\"), or says they don't know, do NOT treat it as an answer and do NOT " +
+  "move on: say kindly that it's fine not to know, give ONE concrete hint from the material, and ask them to try again.";
+
+// A twelve-year-old who is stuck twice does not need a third hint, they need
+// the answer. Guiding beyond that stops being Socratic and starts being
+// withheld help.
+const GIVE_UP_RULE =
+  " Count their attempts in the conversation history: if they have already tried and failed TWICE, stop asking and " +
+  "explain the full answer step by step, then check they followed it.";
+
+// "askme" and "example" both end by putting a question to the student, so
+// both need a different instruction once the student has actually replied —
+// otherwise the model answers past them: firing off unrelated questions, or
+// handing over a brand-new worked example as though nothing was asked.
 function intentGuide(intent: Intent, turn: number): string {
   if (intent === "askme" && turn > 0) {
     return (
       "The student has just answered your previous guiding question — read their answer in the conversation history. " +
       "Tell them plainly whether they are right, partly right, or off track, grounded ONLY in the approved material " +
       "(do not praise an answer you have not actually evaluated). Briefly give the correct idea if they were off. " +
-      "THEN ask exactly ONE new guiding question that goes further — never two at once."
+      "THEN ask exactly ONE new guiding question that goes further — never two at once." +
+      UNUSABLE_REPLY_RULE +
+      GIVE_UP_RULE
+    );
+  }
+  if (intent === "example" && turn > 0) {
+    return (
+      "The student is REPLYING to the \"now you try\" question you asked at the end of your last example — read it in " +
+      "the conversation history. Do NOT give a brand-new worked example. Judge what they actually wrote: if it is " +
+      "right, confirm it briefly and say why. If it is wrong, say so kindly, give ONE hint, and ask them to try the " +
+      "SAME question again." +
+      UNUSABLE_REPLY_RULE +
+      GIVE_UP_RULE
     );
   }
   return INTENT_GUIDE[intent];
