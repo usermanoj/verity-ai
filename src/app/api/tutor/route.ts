@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { streamText } from "ai";
-import { MODEL, GATEWAY_FALLBACK_MODELS, hasApiKey, cachedSystem } from "@/lib/ai";
+import { aiModel, gatewayFailover, GATEWAY_FALLBACK_MODELS, hasApiKey, cachedSystem } from "@/lib/ai";
 import { hasLangfuse } from "@/lib/observability";
 import { logEvent } from "@/lib/events";
 import { buildSystemPrompt, fallbackReply, type Intent, type EslLevel } from "@/lib/tutor";
@@ -104,12 +104,12 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       try {
         const result = streamText({
-          model: MODEL,
+          model: aiModel("primary"),
           maxOutputTokens: 800,
           system: cachedSystem(system),
           messages: [...priorTurns, { role: "user", content: userText }],
           experimental_telemetry: { isEnabled: hasLangfuse(), functionId: "tutor" },
-          providerOptions: { gateway: { models: GATEWAY_FALLBACK_MODELS } },
+          providerOptions: gatewayFailover(GATEWAY_FALLBACK_MODELS),
         });
         let receivedAnyText = false;
         for await (const textDelta of result.textStream) {
