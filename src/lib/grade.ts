@@ -53,6 +53,14 @@ export type GradeResult = {
   correct: boolean;
   score: number;            // 0..1
   feedback: string;
+  // What the right answer was, for a wrong attempt.
+  //
+  // Each grader used to fold this into its feedback sentence — or not at all,
+  // so numeric and true/false said "not quite" and left the student with no
+  // way to find out. This is practice, not an exam: a student who cannot see
+  // the answer cannot learn from the attempt. Kept separate from `feedback`
+  // so the UI can present it consistently instead of burying it in prose.
+  correctAnswer?: string;
   details: {
     valueOk?: boolean;
     unitOk?: boolean;
@@ -120,6 +128,7 @@ export function gradeNumeric(q: NumericQuestion, answer: string): GradeResult {
     correct,
     score,
     feedback,
+    correctAnswer: correct ? undefined : [q.expected, q.unit, q.direction].filter(Boolean).join(" "),
     details: { valueOk: !!valueOk, unitOk, directionOk, parsedValue: parsed },
   };
 }
@@ -142,11 +151,8 @@ export function gradeMcq(q: McqQuestion, answer: string): GradeResult {
   return {
     correct,
     score: correct ? 1 : 0,
-    feedback: correct
-      ? "Correct!"
-      : answerText
-        ? `Not quite — the answer is ${answerText}.`
-        : "Not quite — review the material and try again.",
+    feedback: correct ? "Correct!" : "Not quite — review the material and try again.",
+    correctAnswer: correct ? undefined : (answerText ?? expected),
     details: {},
   };
 }
@@ -192,6 +198,7 @@ export function gradeTrueFalse(q: TrueFalseQuestion, answer: string): GradeResul
       : said === null
         ? "Answer True or False."
         : `Not quite. ${q.because ?? "Re-read this section."}`,
+    correctAnswer: correct ? undefined : q.correct ? "True" : "False",
     details: {},
   };
 }
@@ -210,7 +217,8 @@ export function gradeFill(q: FillBlankQuestion, answer: string): GradeResult {
   return {
     correct,
     score: correct ? 1 : 0,
-    feedback: correct ? "Correct!" : `Not quite — the word is "${q.accept[0]}".`,
+    feedback: correct ? "Correct!" : "Not quite — read the section again.",
+    correctAnswer: correct ? undefined : q.accept[0],
     details: {},
   };
 }
@@ -251,7 +259,8 @@ export function gradeMatching(q: MatchingQuestion, answer: string): GradeResult 
     score: q.pairs.length === 0 ? 0 : rightCount / q.pairs.length,
     feedback: correct
       ? "All matched correctly!"
-      : `${rightCount} of ${q.pairs.length} matched. Look again at the ones left over.`,
+      : `${rightCount} of ${q.pairs.length} matched.`,
+    correctAnswer: correct ? undefined : q.pairs.map((p) => `${p.left} → ${p.right}`).join("; "),
     details: {},
   };
 }

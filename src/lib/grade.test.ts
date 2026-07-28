@@ -78,7 +78,34 @@ describe("gradeMcq — with options", () => {
   });
 
   it("names the right answer when wrong, instead of just saying no", () => {
-    expect(gradeMcq(q, "A").feedback).toContain("Iron");
+    // On its own field rather than inside the sentence, so the UI can present
+    // it the same way for every question kind.
+    expect(gradeMcq(q, "A").correctAnswer).toBe("Iron");
+    expect(gradeMcq(q, "B").correctAnswer).toBeUndefined();
+  });
+});
+
+// Every kind has to reveal its answer, not just the ones whose feedback
+// sentence happened to mention it. A student who cannot see what they should
+// have said learns nothing from getting it wrong.
+describe("correctAnswer is populated for every question kind", () => {
+  it("reveals on a wrong attempt and stays absent on a right one", () => {
+    expect(grade({ kind: "numeric", expected: 300, unit: "Nm" }, "12 Nm").correctAnswer).toBe("300 Nm");
+    expect(grade({ kind: "numeric", expected: 300, unit: "Nm" }, "300 Nm").correctAnswer).toBeUndefined();
+
+    expect(grade({ kind: "truefalse", correct: false }, "True").correctAnswer).toBe("False");
+    expect(grade({ kind: "truefalse", correct: false }, "False").correctAnswer).toBeUndefined();
+
+    expect(grade({ kind: "fill", accept: ["magnetised"] }, "magnetic").correctAnswer).toBe("magnetised");
+
+    const matching = {
+      kind: "matching",
+      pairs: [
+        { left: "Domain", right: "A small magnetic region" },
+        { left: "Solenoid", right: "A coil of wire" },
+      ],
+    } as const;
+    expect(grade(matching, "0=A coil of wire").correctAnswer).toContain("Domain → A small magnetic region");
   });
 });
 
