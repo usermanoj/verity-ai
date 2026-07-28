@@ -17,10 +17,15 @@ export async function POST(req: NextRequest) {
   }
 
   const user = await getCurrentAppUser();
-  if (!user) {
-    // No signed-in student yet — student-facing pages aren't auth-gated
-    // (see ROADMAP.md §7), so this is the expected common case today, not
-    // an error.
+
+  // Students only, matching what conversationFor() already does for the
+  // tutor. A teacher trying their own practice questions was being recorded
+  // as if it were student work — harmless while no teacher is enrolled in a
+  // class, and silently wrong the moment one enrols themselves to preview a
+  // lesson, which is a normal thing to do. Two logging paths disagreeing
+  // about who counts is the kind of inconsistency that surfaces later as a
+  // figure nobody can explain.
+  if (!user || user.role !== "student") {
     return NextResponse.json({ logged: false });
   }
 

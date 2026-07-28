@@ -90,8 +90,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // "tutor_message" means STUDENT usage — it is what the engagement figures
+  // count. logEvent itself stays generic, so staff auditing can use it later
+  // under its own event type; the filter belongs here, where the meaning of
+  // the event is known.
+  const isStudent = viewer?.role === "student";
+
   if (!hasApiKey()) {
-    void logEvent("tutor_message", { intent, topicId: topic, demo: true });
+    if (isStudent) void logEvent("tutor_message", { intent, topicId: topic, demo: true });
     const fb = await fallbackReply(topic, intent, question, turnNum, contextChunkId);
     const stream = new ReadableStream({
       start(controller) {
@@ -122,7 +128,7 @@ export async function POST(req: NextRequest) {
   // already said — without this, "then?" / "what next?" has nothing to build on.
   const priorTurns = (history ?? []).map((h) => ({ role: h.role, content: h.content }));
 
-  void logEvent("tutor_message", { intent, topicId: topic, demo: false });
+  if (isStudent) void logEvent("tutor_message", { intent, topicId: topic, demo: false });
 
   // Opened before streaming so the student's question is recorded even if the
   // model call then fails — a transcript that only keeps the exchanges that
