@@ -1,6 +1,6 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { CHUNK_MODEL, STRUCTURED_FALLBACK_MODELS, mapAiCalls, withRateLimitRetry } from "@/lib/ai";
+import { aiModel, gatewayFailover, STRUCTURED_FALLBACK_MODELS, mapAiCalls, withRateLimitRetry } from "@/lib/ai";
 import type { ExtractedPage } from "./extract";
 
 const ChunkSchema = z.object({
@@ -98,7 +98,7 @@ async function deriveOutline(sourceFileName: string, pages: ExtractedPage[]): Pr
   try {
     const { output } = await withRateLimitRetry(() =>
       generateText({
-      model: CHUNK_MODEL,
+      model: aiModel("chunk"),
       system: [
         "You are outlining a lesson from the titles of a teacher's slides.",
         "Name the 5-8 parts this lesson divides into, in teaching order.",
@@ -107,7 +107,7 @@ async function deriveOutline(sourceFileName: string, pages: ExtractedPage[]): Pr
       ].join("\n"),
       prompt: `Source file: ${sourceFileName}\n\nSlide openings:\n${openings}`,
       output: Output.object({ schema: z.object({ modules: z.array(z.string()).min(1).max(10) }) }),
-      providerOptions: { gateway: { models: STRUCTURED_FALLBACK_MODELS } },
+      providerOptions: gatewayFailover(STRUCTURED_FALLBACK_MODELS),
       }),
     );
     return output.modules;
@@ -129,11 +129,11 @@ async function chunkBatch(sourceFileName: string, pages: ExtractedPage[], outlin
   const { output } = await generateText({
     // Fast tier, not the primary model — see CHUNK_MODEL's rationale in
     // lib/ai.ts (mechanical rewriting + teacher reviews every chunk anyway).
-    model: CHUNK_MODEL,
+    model: aiModel("chunk"),
     system: SYSTEM_PROMPT,
     prompt: `Source file: ${sourceFileName}${outlineBlock}\n\n${pagesBlock}`,
     output: Output.object({ schema: ChunkingResultSchema }),
-    providerOptions: { gateway: { models: STRUCTURED_FALLBACK_MODELS } },
+    providerOptions: gatewayFailover(STRUCTURED_FALLBACK_MODELS),
   });
 
   // A batch can still drift off the agreed vocabulary. Anything not on the

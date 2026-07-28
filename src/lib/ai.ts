@@ -1,31 +1,142 @@
-// Model-agnostic AI layer: every call site below routes through the Vercel
-// AI Gateway using a plain "provider/model" string, so switching providers
-// (Claude, GPT, Gemini, DeepSeek, Qwen, Kimi, ...) is an env var change, not
-// a call-site rewrite.
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import type { LanguageModel } from "ai";
+
+// Model-agnostic AI layer. Every call site asks for a ROLE — "primary",
+// "chunk", "translate", "question" — and this module decides which provider
+// and which model serves it, so switching either is an env var change rather
+// than a call-site rewrite.
 //
-// Default was originally claude-opus-4.8 (the strongest Claude tier) but
-// that's restricted on Vercel's free Hobby-tier AI Gateway — every real
-// call failed with "Free tier users do not have access to this model"
-// until diagnosed during first live deployment. claude-sonnet-5 is the
-// strongest tier reasonably likely to be free-tier accessible, so it's the
-// best quality-vs-availability tradeoff for the primary model.
-export const MODEL = process.env.AI_MODEL || "anthropic/claude-sonnet-5";
-export const TRANSLATE_MODEL = process.env.AI_TRANSLATE_MODEL || MODEL;
+// Four providers, because relying on one turned out to be a single point of
+// failure in practice rather than in theory. The Vercel AI Gateway began
+// requiring a positive credit balance for every request — including
+// bring-your-own-key — and ingestion stopped dead: no chunking, no questions,
+// no way to test, and nothing wrong with the code. A provider you cannot
+// swap is a provider that can halt the project.
+//
+//   gateway    Vercel AI Gateway (default). One key, many models, failover.
+//   anthropic  Direct to Anthropic with ANTHROPIC_API_KEY.
+//   openai     Direct to OpenAI with OPENAI_API_KEY.
+//   local      Any OpenAI-compatible endpoint — Ollama, LM Studio, vLLM.
+//              Free and offline, at a real cost in output quality.
+export type AiProvider = "gateway" | "anthropic" | "openai" | "local";
+export type AiRole = "primary" | "chunk" | "translate" | "question";
 
-// Ingestion chunking runs on the fast/cheap tier by default, not the primary
-// model. Chunking is a mechanical extraction task ("split faithfully, never
-// invent") where top-tier reasoning adds latency, not quality — and it was
-// the dominant share of the 30-60s+ a teacher watched "Processing…" after
-// every upload. Any chunking slip is also caught by design: a teacher
-// reviews every chunk before approval, which is exactly what makes the
-// faster tier safe here. Tutoring/question-generation stay on MODEL.
-export const CHUNK_MODEL = process.env.AI_CHUNK_MODEL || "anthropic/claude-haiku-4.5";
+export const AI_PROVIDER = (process.env.AI_PROVIDER || "gateway") as AiProvider;
 
-// AI_GATEWAY_API_KEY is scoped per Vercel environment (Production, and
-// Preview restricted to the staging branch) — other branches' PR previews
-// have no value here and correctly stay in demo mode.
-export const hasApiKey = () =>
-  Boolean(process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN);
+// Model names are provider-specific, so each provider carries its own
+// defaults. Every one is overridable per role, which is what makes a wrong
+// default here a one-line env change rather than a code change.
+//
+// The two tiers are deliberate. Chunking is mechanical ("split faithfully,
+// never invent") where top-tier reasoning adds latency rather than quality,
+// and a teacher reviews every chunk before approval — which is exactly what
+// makes the cheaper tier safe there. Tutoring answers students directly, so
+// it gets the better model.
+const DEFAULTS: Record<AiProvider, Record<AiRole, string>> = {
+  gateway: {
+    primary: "anthropic/claude-sonnet-5",
+    chunk: "anthropic/claude-haiku-4.5",
+    translate: "anthropic/claude-sonnet-5",
+    question: "anthropic/claude-sonnet-5",
+  },
+  anthropic: {
+    primary: "claude-sonnet-5",
+    chunk: "claude-haiku-4.5",
+    translate: "claude-sonnet-5",
+    question: "claude-sonnet-5",
+  },
+  openai: {
+    primary: "gpt-5.4",
+    chunk: "gpt-5.4-mini",
+    translate: "gpt-5.4-mini",
+    question: "gpt-5.4-mini",
+  },
+  local: {
+    primary: "llama3.1",
+    chunk: "llama3.1",
+    translate: "llama3.1",
+    question: "llama3.1",
+  },
+};
+
+const ROLE_ENV: Record<AiRole, string | undefined> = {
+  primary: process.env.AI_MODEL,
+  chunk: process.env.AI_CHUNK_MODEL,
+  translate: process.env.AI_TRANSLATE_MODEL,
+  question: process.env.AI_QUESTION_MODEL,
+};
+
+function modelId(role: AiRole): string {
+  return ROLE_ENV[role] || DEFAULTS[AI_PROVIDER][role] || DEFAULTS.gateway[role];
+}
+
+// Created lazily and once. Constructing a provider reads env vars, which are
+// not present at module load in every environment.
+let anthropicProvider: ReturnType<typeof createAnthropic> | undefined;
+let openaiProvider: ReturnType<typeof createOpenAI> | undefined;
+let localProvider: ReturnType<typeof createOpenAICompatible> | undefined;
+
+// The model to hand to generateText/streamText for a role.
+//
+// The Gateway path returns a plain "provider/model" string, which the AI SDK
+// resolves through the Gateway itself; the direct paths return a provider
+// instance that talks to the vendor with no Vercel involvement at all.
+export function aiModel(role: AiRole): LanguageModel {
+  const id = modelId(role);
+
+  switch (AI_PROVIDER) {
+    case "anthropic":
+      anthropicProvider ??= createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      return anthropicProvider(id);
+    case "openai":
+      openaiProvider ??= createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      return openaiProvider(id);
+    case "local":
+      localProvider ??= createOpenAICompatible({
+        name: "local",
+        // Ollama's OpenAI-compatible endpoint by default; LM Studio and vLLM
+        // expose the same shape on their own ports.
+        baseURL: process.env.AI_LOCAL_BASE_URL || "http://localhost:11434/v1",
+        // Most local servers ignore the key but the SDK wants one present.
+        apiKey: process.env.AI_LOCAL_API_KEY || "local",
+      });
+      return localProvider(id);
+    default:
+      return id;
+  }
+}
+
+// Gateway failover only means anything on the Gateway. Sending it to a direct
+// provider would be a silently ignored option that reads as protection the
+// call does not actually have.
+export function gatewayFailover(models: string[]) {
+  return AI_PROVIDER === "gateway" ? { gateway: { models } } : undefined;
+}
+
+// Whether the configured provider has what it needs to make a call. Without
+// this the app answers with real-looking output from a demo path, or throws
+// deep inside a request.
+export const hasApiKey = () => {
+  switch (AI_PROVIDER) {
+    case "anthropic":
+      return Boolean(process.env.ANTHROPIC_API_KEY);
+    case "openai":
+      return Boolean(process.env.OPENAI_API_KEY);
+    // A local endpoint needs no credential; if it isn't running, the call
+    // fails loudly, which is the honest outcome.
+    case "local":
+      return true;
+    default:
+      return Boolean(process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN);
+  }
+};
+
+// Kept for the call sites that still name models directly.
+export const MODEL = modelId("primary");
+export const TRANSLATE_MODEL = modelId("translate");
+export const CHUNK_MODEL = modelId("chunk");
 
 // Gateway-level failover — tried automatically if the primary model is
 // unavailable (plan-tier restricted, rate-limited, or deprecated), so a

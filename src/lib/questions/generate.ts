@@ -1,6 +1,6 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { MODEL, STRUCTURED_FALLBACK_MODELS, withRateLimitRetry } from "@/lib/ai";
+import { aiModel, gatewayFailover, STRUCTURED_FALLBACK_MODELS, withRateLimitRetry } from "@/lib/ai";
 import type { Question } from "@/lib/grade";
 
 const QuestionSchema = z.discriminatedUnion("kind", [
@@ -80,11 +80,11 @@ const SYSTEM_PROMPT = [
 export async function generatePracticeQuestions(chunkHeading: string | null, chunkText: string): Promise<GeneratedQuestion[]> {
   const { output } = await withRateLimitRetry(() =>
     generateText({
-    model: MODEL,
+    model: aiModel("question"),
     system: SYSTEM_PROMPT,
     prompt: `Approved material${chunkHeading ? ` ("${chunkHeading}")` : ""}:\n${chunkText}`,
     output: Output.object({ schema: z.object({ questions: z.array(GeneratedQuestionSchema) }) }),
-      providerOptions: { gateway: { models: STRUCTURED_FALLBACK_MODELS } },
+      providerOptions: gatewayFailover(STRUCTURED_FALLBACK_MODELS),
     }),
   );
 
