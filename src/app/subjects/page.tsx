@@ -2,6 +2,7 @@ import Link from "next/link";
 import { contentRepo } from "@/lib/content-repo";
 import { requireSignedIn } from "@/lib/auth";
 import { canSee, visibleDocuments } from "@/lib/access";
+import JoinClass from "@/components/classes/JoinClass";
 import { TOPICS as DEMO_TOPICS } from "@/data/corpus";
 
 // Reads whatever teachers have actually approved, so it can't be prerendered.
@@ -33,6 +34,11 @@ export default async function Subjects() {
   const uploaded = Object.values(allTopics).filter(
     (t) => !(t.id in DEMO_TOPICS) && canSee(visibility, t.id),
   );
+
+  // A student in no classes can see nothing, so the page has to offer the way
+  // in rather than simply being empty. Staff are unrestricted viewers and
+  // never need a code.
+  const needsToJoin = visibility !== "all" && visibility.size === 0;
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
@@ -68,6 +74,12 @@ export default async function Subjects() {
           );
         })}
       </section>
+
+      {needsToJoin && (
+        <section className="mt-10">
+          <JoinClass />
+        </section>
+      )}
 
       {uploaded.length > 0 && (
         <section className="mt-10">
