@@ -1,6 +1,10 @@
 import Link from "next/link";
 import TeacherAnalyticsView from "@/components/analytics/TeacherAnalyticsView";
 import { getTeacherAnalytics } from "@/lib/analytics";
+import ClassCodes, { type ClassCode } from "@/components/classes/ClassCodes";
+import { Panel } from "@/components/analytics/charts";
+import { supabaseServer } from "@/lib/supabase/server";
+import { hasSupabase } from "@/lib/supabase/config";
 import { requireRole } from "@/lib/auth";
 
 // Auth-gated: never prerender. The auth helpers read cookies at request
@@ -11,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TeacherPage() {
   await requireRole("teacher", "/teacher");
-  const data = await getTeacherAnalytics();
+  const [data, codes] = await Promise.all([getTeacherAnalytics(), getClassCodes()]);
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
@@ -28,7 +32,11 @@ export default async function TeacherPage() {
         What your students can see, what is waiting on you, and where the gaps are.
       </p>
 
-      <div className="mt-8">
+      <div className="mt-8 space-y-5">
+        <Panel title="Class codes" hint="Students sign in with their school account, then enter a code once to join a section.">
+          <ClassCodes initial={codes} />
+        </Panel>
+
         {data ? (
           <TeacherAnalyticsView data={data} />
         ) : (
@@ -37,4 +45,15 @@ export default async function TeacherPage() {
       </div>
     </main>
   );
+}
+
+async function getClassCodes(): Promise<ClassCode[]> {
+  if (!hasSupabase()) return [];
+  try {
+    const supabase = await supabaseServer();
+    const { data } = await supabase.rpc("teacher_class_codes");
+    return (data as ClassCode[] | null) ?? [];
+  } catch {
+    return [];
+  }
 }

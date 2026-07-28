@@ -380,6 +380,18 @@ export type Database = {
       // function and return nothing at all to a caller without the role, so
       // the page never has to decide whether it may see this.
       // See supabase/migrations/0015_analytics.sql.
+      teacher_class_codes: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
+      rotate_class_code: {
+        Args: { p_class_id: string };
+        Returns: unknown;
+      };
+      redeem_join_code: {
+        Args: { p_code: string };
+        Returns: unknown;
+      };
       teacher_analytics: {
         Args: Record<string, never>;
         Returns: unknown;
