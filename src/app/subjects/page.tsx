@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { contentRepo } from "@/lib/content-repo";
+import { requireSignedIn } from "@/lib/auth";
+import { canSee, visibleDocuments } from "@/lib/access";
 import { TOPICS as DEMO_TOPICS } from "@/data/corpus";
 
 // Reads whatever teachers have actually approved, so it can't be prerendered.
@@ -20,11 +22,17 @@ const TASKS: { subject: string; title: string; due: string; status: string; href
 ];
 
 export default async function Subjects() {
-  // Everything a teacher uploaded and approved. The two seeded demo topics
-  // are filtered out — they already have their own hand-built pages and are
-  // surfaced in the tasks table below.
+  // Signed in, and then scoped. This page listed every approved document in
+  // the database to anyone who loaded the URL.
+  const user = await requireSignedIn("/subjects");
+  const visibility = await visibleDocuments(user);
+
   const allTopics = await contentRepo.getTopics();
-  const uploaded = Object.values(allTopics).filter((t) => !(t.id in DEMO_TOPICS));
+  // The two seeded demo topics are filtered out — they have their own
+  // hand-built pages and are surfaced in the tasks table below.
+  const uploaded = Object.values(allTopics).filter(
+    (t) => !(t.id in DEMO_TOPICS) && canSee(visibility, t.id),
+  );
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">

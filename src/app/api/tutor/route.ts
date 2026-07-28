@@ -5,6 +5,9 @@ import { hasLangfuse } from "@/lib/observability";
 import { logEvent } from "@/lib/events";
 import { buildSystemPrompt, fallbackReply, type Intent, type EslLevel } from "@/lib/tutor";
 import { contentRepo } from "@/lib/content-repo";
+import { getCurrentAppUser } from "@/lib/auth";
+import { hasSupabase } from "@/lib/supabase/config";
+import { canSee, visibleDocuments } from "@/lib/access";
 
 export const runtime = "nodejs";
 
@@ -65,6 +68,24 @@ export async function POST(req: NextRequest) {
   const { topicId, intent, question, level, answer, turn, history, contextChunkId } = body;
   const turnNum = turn ?? 0;
   const topic = topicId ?? "moments";
+
+  // Gating the topic PAGE is not enough: this endpoint returns the same
+  // approved material, quoted and cited, to anyone who posts a topic id. It
+  // was open. A student must be signed in and the document must reach a class
+  // they are in — the same rule the page applies, applied at the other door.
+  //
+  // Skipped entirely when Supabase isn't configured, so a preview deployment
+  // stays in demo mode on the seeded topics rather than refusing every
+  // request it has no way to authorise.
+  if (hasSupabase()) {
+    const user = await getCurrentAppUser();
+    if (!user) return jsonError("Please sign in to use the assistant.", 401);
+    if (!canSee(await visibleDocuments(user), topic)) {
+      // Same wording as an unknown topic: a refusal should not reveal that
+      // this document exists.
+      return jsonError("That topic isn't available.", 404);
+    }
+  }
 
   if (!hasApiKey()) {
     void logEvent("tutor_message", { intent, topicId: topic, demo: true });
