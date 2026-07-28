@@ -32,7 +32,10 @@ const FEATURE_ICONS: Record<(typeof FEATURE_KEYS)[number], string> = {
   grading: "✅",
 };
 
-export default function HomeContent({ locale }: { locale: AppLocale }) {
+// `session` is a slot rather than something fetched here: this component is
+// shared by both locale routes and is deliberately synchronous and
+// request-free, which is what keeps the two homepages static.
+export default function HomeContent({ locale, session }: { locale: AppLocale; session?: React.ReactNode }) {
   const messages = MESSAGES[locale];
   const t = createTranslator({ locale, messages, namespace: "HomePage" });
   const switcher = createTranslator({ locale, messages, namespace: "LocaleSwitcher" });
@@ -48,7 +51,11 @@ export default function HomeContent({ locale }: { locale: AppLocale }) {
         </div>
         <div className="flex items-center gap-3">
           <LocaleSwitcher locale={locale} label={switcher("label")} />
-          <span className="glass rounded-full px-3 py-1 text-xs text-[var(--muted)]">IG · IB · Cambridge</span>
+          <span className="hidden glass rounded-full px-3 py-1 text-xs text-[var(--muted)] sm:inline">IG · IB · Cambridge</span>
+          {/* A session survives a browser restart, so without this the landing
+              page gave no sign that anyone was signed in — and the app behind
+              it opened straight up, which reads as no authentication at all. */}
+          {session}
         </div>
       </header>
 

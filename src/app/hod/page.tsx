@@ -2,6 +2,7 @@ import Link from "next/link";
 import SchoolAnalyticsView from "@/components/analytics/SchoolAnalyticsView";
 import { getSchoolAnalytics, getSchoolLearning } from "@/lib/analytics";
 import { requireRole } from "@/lib/auth";
+import SessionBadge from "@/components/SessionBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export default async function HodPage() {
       <div className="mb-6 flex items-center justify-between">
         <Link href="/" className="text-sm text-[var(--muted)] hover:text-[var(--text)]">← Home</Link>
         <span className="rounded-full bg-[rgba(99,102,241,0.18)] px-3 py-1 text-sm text-[var(--brand2)]">📊 HOD</span>
+        <SessionBadge />
       </div>
 
       <h1 className="text-3xl font-bold tracking-tight">Department readiness</h1>

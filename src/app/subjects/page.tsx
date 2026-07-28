@@ -3,6 +3,7 @@ import { contentRepo } from "@/lib/content-repo";
 import { requireSignedIn } from "@/lib/auth";
 import { canSee, visibleDocuments } from "@/lib/access";
 import JoinClass from "@/components/classes/JoinClass";
+import SessionBadge from "@/components/SessionBadge";
 import { TOPICS as DEMO_TOPICS } from "@/data/corpus";
 
 // Reads whatever teachers have actually approved, so it can't be prerendered.
@@ -44,23 +45,7 @@ export default async function Subjects() {
     <main className="mx-auto max-w-6xl px-6 py-10">
       <div className="mb-8 flex items-center justify-between">
         <Link href="/" className="text-sm text-[var(--muted)] hover:text-[var(--text)]">← Home</Link>
-        {/* Was hardcoded to "Grade 7 · Student" with an "L" avatar, left over
-            from the hackathon demo. Once real sign-in existed that became a
-            lie: a teacher saw a student's label above a page showing them
-            every document in the school, which reads as a security failure
-            rather than the staff preview it is. */}
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-[var(--muted)]">
-            {user?.displayName ?? "Signed in"}
-            {user ? <span className="ml-2 opacity-70">{ROLE_LABEL[user.role]}</span> : null}
-          </span>
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--brand)] text-sm font-semibold">
-            {(user?.displayName ?? "?").trim().charAt(0).toUpperCase()}
-          </span>
-          <a href="/auth/signout" className="text-xs text-[var(--muted)] underline hover:text-[var(--text)]">
-            Sign out
-          </a>
-        </div>
+        <SessionBadge />
       </div>
 
       {/* Staff see every approved document in the school, which is correct
@@ -164,10 +149,3 @@ export default async function Subjects() {
     </main>
   );
 }
-
-const ROLE_LABEL: Record<string, string> = {
-  student: "Student",
-  teacher: "Teacher",
-  hod: "Head of department",
-  principal: "Principal",
-};

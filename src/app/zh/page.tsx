@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import HomeContent from "@/components/HomeContent";
+import SessionBadgeClient from "@/components/SessionBadgeClient";
 
 // The Chinese homepage is a real prerendered page, not a client-side swap of
 // the English one — Chinese is the first language market, so it gets the same
@@ -18,7 +19,7 @@ export default function HomeZh() {
           paint (an inline script runs during parse), which matters for screen
           readers and CJK font selection. */}
       <script dangerouslySetInnerHTML={{ __html: `document.documentElement.lang='zh'` }} />
-      <HomeContent locale="zh" />
+      <HomeContent locale="zh" session={<SessionBadgeClient />} />
     </>
   );
 }

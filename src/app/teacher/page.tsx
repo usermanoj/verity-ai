@@ -6,6 +6,7 @@ import { Panel } from "@/components/analytics/charts";
 import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
 import { requireRole } from "@/lib/auth";
+import SessionBadge from "@/components/SessionBadge";
 
 // Auth-gated: never prerender. The auth helpers read cookies at request
 // time, but bail out early when Supabase env vars are absent — so a build
@@ -24,6 +25,7 @@ export default async function TeacherPage() {
         <div className="flex items-center gap-3 text-sm text-[var(--muted)]">
           <Link href="/teacher/ingest" className="glass rounded-full px-3 py-1 hover:text-[var(--text)]">📤 Upload material</Link>
           <span className="rounded-full bg-[rgba(99,102,241,0.18)] px-3 py-1 text-[var(--brand2)]">👩‍🏫 Teacher</span>
+        <SessionBadge />
         </div>
       </div>
 
