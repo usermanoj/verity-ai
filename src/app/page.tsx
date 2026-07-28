@@ -1,4 +1,5 @@
 import HomeContent from "@/components/HomeContent";
+import SessionBadgeClient from "@/components/SessionBadgeClient";
 
 // Statically prerendered at build time and served from the CDN edge — no
 // serverless invocation, so no cold start. It previously rendered on every
@@ -8,5 +9,5 @@ import HomeContent from "@/components/HomeContent";
 export const dynamic = "force-static";
 
 export default function Home() {
-  return <HomeContent locale="en" />;
+  return <HomeContent locale="en" session={<SessionBadgeClient />} />;
 }
