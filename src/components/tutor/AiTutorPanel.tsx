@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CHECKABLE_CHUNK_IDS } from "@/lib/tutor";
 import RichText from "./RichText";
-import { shortCite } from "./cite";
 
 type Intent = "explain" | "translate" | "example" | "askme" | "check";
 type EslLevel = "advanced" | "intermediate" | "beginner" | "beginner_zh";
@@ -13,8 +12,7 @@ type Msg = {
   role: "user" | "ai";
   text: string;       // display text (may be prefixed with a button label for user turns)
   raw?: string;        // the actual content sent to / returned from the model, for history
-  cite?: string;
-  citeLabel?: string;  // human-readable source name, for the "Checking against" indicator
+  cite?: string;      // a citation the model volunteered, stripped from the body
   demo?: boolean;
   intent?: Intent;        // which intent produced this AI reply (drives turn-reset logic)
   chunkId?: string;       // which approved-corpus chunk this AI reply was grounded in (demo mode)
@@ -223,11 +221,11 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
     },
   ]);
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
   const [level, setLevel] = useState<EslLevel>("intermediate");
   const [loading, setLoading] = useState<Intent | null>(null);
-  const [showCheck, setShowCheck] = useState(false);
+  const [needsAnswer, setNeedsAnswer] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const turnCounts = useRef<Partial<Record<Intent, number>>>({});
   // Which conversational mode the free-text box continues when you hit Enter —
@@ -251,14 +249,6 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
   // translation of a translation isn't meaningful.
   const canTranslate = messages.some((m) => m.role === "ai" && m.intent !== undefined && !m.isTranslation);
 
-  // Demo mode still pins the answer to a specific numeric worked example, so
-  // the "Checking against" hint can name it.
-  const lastCheckableChunkId = [...messages]
-    .reverse()
-    .find((m) => m.role === "ai" && m.chunkId && CHECKABLE_CHUNK_IDS.includes(m.chunkId))?.chunkId;
-  const checkableChunk = lastCheckableChunkId
-    ? messages.find((m) => m.chunkId === lastCheckableChunkId)?.citeLabel
-    : undefined;
 
   // Speech is a browser-level singleton, not part of this component's tree —
   // navigating to another lesson would otherwise leave it talking to an empty
@@ -277,21 +267,54 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
     speak(text, () => setSpeakingId((current) => (current === id ? null : current)));
   }
 
-  function scrollToBottom() {
-    scrollRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
+  // The transcript followed the stream with behavior:"smooth" on EVERY token.
+  // Each call restarts the easing animation from wherever the last one had
+  // reached, so the panel spent the whole reply mid-tween, jittering — the
+  // "flicker" — and never actually arriving. Instant during streaming; smooth
+  // only for the one deliberate jump after a turn ends.
+  function scrollToBottom(smooth = false) {
+    scrollRef.current?.scrollTo({ top: 1e9, behavior: smooth ? "smooth" : "auto" });
+  }
+
+  // A student scrolling back to re-read an earlier answer should not be
+  // dragged to the bottom by the next token.
+  function isNearBottom(): boolean {
+    const el = scrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }
+
+  // At most one scroll per animation frame instead of one per token.
+  const scrollQueued = useRef(false);
+  function followStream() {
+    if (scrollQueued.current || !isNearBottom()) return;
+    scrollQueued.current = true;
+    requestAnimationFrame(() => {
+      scrollQueued.current = false;
+      scrollToBottom();
+    });
   }
 
   async function ask(intent: Intent) {
-    if (intent === "check" && !showCheck) {
-      setShowCheck(true);
+    // "Check My Answer" used to slide open a SECOND text box, above the one
+    // already on screen, pre-filled with a torque placeholder from the
+    // Moments demo. Two inputs, one of them irrelevant to the lesson, and no
+    // answer typed in either — the student was being asked to answer a
+    // question nobody had asked yet.
+    //
+    // There is one box now. Check reads what is in it, and if it's empty says
+    // so instead of opening somewhere new to type.
+    if (intent === "check" && !question.trim()) {
+      setNeedsAnswer(true);
+      inputRef.current?.focus();
       return;
     }
+    setNeedsAnswer(false);
 
     const q = question.trim() || `Help me with ${topicTitle}`;
-    const ans = answer;
-    // Clear inputs immediately so leftover text never lingers into the next turn.
+    const ans = question.trim();
+    // Clear the input immediately so leftover text never lingers into the next turn.
     setQuestion("");
-    setAnswer("");
 
     // The rotation/"turn" for explain/example/askme should only advance if
     // the student is CONTINUING that same thread with nothing else in
@@ -342,10 +365,14 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
         return;
       }
 
-      // Which numeric worked example the conversation is about — needed so
-      // "Check My Answer" hints at the RIGHT problem (never a bare
-      // definition/principle, which has nothing to check).
-      const contextChunkId = lastCheckableChunkId;
+      // Which numeric worked example the conversation is about, so "Check My
+      // Answer" hints at the RIGHT problem rather than a bare definition.
+      // Only the offline demo replies carry a chunk id; against a real model
+      // this is undefined and the route falls back to asking the student what
+      // question they're solving, which is the honest thing to do.
+      const contextChunkId = [...messages]
+        .reverse()
+        .find((m) => m.role === "ai" && m.chunkId && CHECKABLE_CHUNK_IDS.includes(m.chunkId))?.chunkId;
 
       // Real conversation memory: without this, the model can't tell what it
       // already said, so "then?" / "what next?" has nothing to build on.
@@ -375,7 +402,7 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
         } else {
           setMessages((m) => m.map((msg) => (msg.id === streamId ? { ...msg, text: accumulated } : msg)));
         }
-        scrollToBottom();
+        followStream();
       });
 
       const { body, cite } = splitCite(result.text);
@@ -387,7 +414,6 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
                 text: body,
                 raw: body,
                 cite,
-                citeLabel: cite,
                 demo: result.demo,
                 intent,
                 chunkId: result.sourceId ?? (intent === "check" ? contextChunkId : undefined),
@@ -401,8 +427,7 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
       setMessages((m) => [...m, { id: nextId(), role: "ai", text: "⚠️ Network problem — please try again." }]);
     } finally {
       setLoading(null);
-      setShowCheck(false);
-      setTimeout(scrollToBottom, 60);
+      setTimeout(() => scrollToBottom(true), 60);
     }
   }
 
@@ -489,41 +514,29 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
         )}
       </div>
 
-      <AnimatePresence>
-        {showCheck && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-            {checkableChunk && (
-              <div className="mt-3 text-[11px] text-[var(--muted)]">
-                {/* Same citation, same problem: this used to print the raw
-                    string, so "Checking against:" was followed by the filename
-                    repeated once per section. */}
-                🎯 Checking against: <span className="text-[var(--brand2)]">{shortCite(checkableChunk)}</span>
-              </div>
-            )}
-            <input
-              autoFocus
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              placeholder="Type your answer + working (e.g. 70 × 0.4 = 28 Nm clockwise)"
-              className="mt-1 w-full rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)] focus:ring-[var(--brand)]"
-              onKeyDown={(e) => e.key === "Enter" && ask("check")}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="mt-3">
         <input
+          ref={inputRef}
           value={question}
-          onChange={(e) => setQuestion(e.target.value)}
+          onChange={(e) => {
+            setQuestion(e.target.value);
+            if (needsAnswer) setNeedsAnswer(false);
+          }}
           placeholder={
             lastIntent === "askme"
               ? "Type your answer to continue…"
               : `Ask about ${topicTitle}… (or just tap a button)`
           }
-          className="mb-2 w-full rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-[var(--border)] focus:ring-[var(--brand)]"
+          className={`mb-2 w-full rounded-xl bg-black/20 px-3 py-2 text-sm outline-none ring-1 focus:ring-[var(--brand)] ${
+            needsAnswer ? "ring-[var(--warn)]" : "ring-[var(--border)]"
+          }`}
           onKeyDown={(e) => e.key === "Enter" && ask(lastIntent)}
         />
+        {needsAnswer && (
+          <div className="mb-2 text-[11px] text-[var(--warn)]">
+            Type your answer here first, then tap Check My Answer.
+          </div>
+        )}
         <div className="grid grid-cols-5 gap-2">
           {BUTTONS.map((b) => {
             const gated =

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, memo, type ReactNode } from "react";
 
 // Renders the small Markdown subset the tutor actually emits.
 //
@@ -12,9 +12,18 @@ import { Fragment, type ReactNode } from "react";
 // 441 kB Sentry bundle). Everything below builds React elements — never
 // dangerouslySetInnerHTML — so model output cannot inject markup by
 // construction.
-export default function RichText({ text }: { text: string }) {
+// Memoised, and that matters more than it looks. A streaming reply calls
+// setMessages on every token, which re-renders the whole transcript — so a
+// 200-token answer re-parsed the Markdown of every message already on screen
+// 200 times over. By the tenth exchange that is thousands of pointless
+// re-parses per reply, and it is most of why tapping a button felt laggy.
+// The text of a finished message never changes, so none of that work was
+// ever needed.
+function RichText({ text }: { text: string }) {
   return <div className="space-y-2">{renderBlocks(text)}</div>;
 }
+
+export default memo(RichText);
 
 function renderBlocks(text: string): ReactNode[] {
   const lines = text.split("\n");

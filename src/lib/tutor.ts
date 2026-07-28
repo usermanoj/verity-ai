@@ -56,7 +56,18 @@ const GIVE_UP_RULE =
 // both need a different instruction once the student has actually replied —
 // otherwise the model answers past them: firing off unrelated questions, or
 // handing over a brand-new worked example as though nothing was asked.
-function intentGuide(intent: Intent, turn: number): string {
+// `studentReplied` is the difference between "they answered me" and "they
+// pressed the button again". Both arrive as turn > 0, and treating them alike
+// is why tapping Give Example a second time was met with "It's okay not to
+// know" — the student had not failed to answer, they had asked to move on.
+function intentGuide(intent: Intent, turn: number, studentReplied: boolean): string {
+  if ((intent === "askme" || intent === "example") && turn > 0 && !studentReplied) {
+    return (
+      `${INTENT_GUIDE[intent]} The student did not answer your last question — they tapped the button again to move ` +
+      "on. Do NOT judge, hint at, or refer to an answer they never gave. Look at the conversation history and cover " +
+      "something NEW: a different part of the material, not a restatement of what you just said."
+    );
+  }
   if (intent === "askme" && turn > 0) {
     return (
       "The student has just answered your previous guiding question — read their answer in the conversation history. " +
@@ -107,10 +118,18 @@ function lengthRule(intent: Intent, turn: number): string {
   if (words === 0) return "";
   if (intent === "askme" || intent === "check") return `\nLENGTH: at most ${words} words.`;
   if (turn === 0) {
+    // "Tap again to go deeper" belongs to Explain alone. Appended to Example
+    // it produced two conflicting instructions in the same breath — "Now you
+    // try: why can an electromagnet be turned off? Tap again to go deeper." —
+    // so a student who tapped, as invited, was then treated as having failed
+    // to answer the question they were also asked.
+    const invite =
+      intent === "explain"
+        ? " Finish with one short line telling the student to tap the button again to go deeper."
+        : "";
     return (
       `\nLENGTH — THIS IS THE FIRST ANSWER: at most ${words} words, and at most 3 bullet points. ` +
-      `Give ONLY the single most important idea. Do NOT try to cover the whole topic. ` +
-      `Finish with one short line telling the student to tap the button again to go deeper.`
+      `Give ONLY the single most important idea. Do NOT try to cover the whole topic.${invite}`
     );
   }
   return (
@@ -119,7 +138,13 @@ function lengthRule(intent: Intent, turn: number): string {
   );
 }
 
-export async function buildSystemPrompt(topicId: string, level: EslLevel, intent: Intent, turn = 0): Promise<string> {
+export async function buildSystemPrompt(
+  topicId: string,
+  level: EslLevel,
+  intent: Intent,
+  turn = 0,
+  studentReplied = false,
+): Promise<string> {
   const chunks = await corpusForTopic(topicId);
   const meta = (await contentRepo.getTopic(topicId)) ?? (await contentRepo.getTopic("moments"))!;
   const progressNote =
@@ -136,7 +161,7 @@ ABSOLUTE RULES — follow every time:
 4. NEVER complete a whole assignment or give the final numeric answer to a task the student must do. Guide, hint, and ask questions instead (academic integrity).
 5. Be encouraging and concise. ${LEVEL_GUIDE[level]}${progressNote}
 
-TASK MODE: ${intentGuide(intent, turn)}${lengthRule(intent, turn)}
+TASK MODE: ${intentGuide(intent, turn, studentReplied)}${lengthRule(intent, turn)}
 
 APPROVED MATERIAL:
 ${corpusBlock(chunks)}`;
