@@ -9,14 +9,37 @@ import type { PracticeItem } from "@/data/practice-banks";
 // key={topicId}) — React then remounts a fresh instance whenever the bank
 // changes, which naturally resets all state below instead of needing an
 // effect to do it manually.
+type Level = PracticeItem["level"];
+
 export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
+  // A deck can generate a couple of hundred questions. Without a way to pick
+  // a difficulty a student just gets whatever the bank happens to hold next,
+  // which is neither revision nor a stretch — it's a shuffle.
+  const [level, setLevel] = useState<Level | "All">("All");
   const [idx, setIdx] = useState(0);
   const [input, setInput] = useState("");
   const [result, setResult] = useState<ReturnType<typeof grade> | null>(null);
   const [streak, setStreak] = useState(0);
   const [wrong, setWrong] = useState(0);
 
-  const item = bank[idx];
+  const visible = level === "All" ? bank : bank.filter((b) => b.level === level);
+  // Filtering can leave the index past the end of a shorter list; clamping
+  // here rather than resetting in an effect keeps the render pure and avoids
+  // a frame where `item` is undefined.
+  const item = visible[Math.min(idx, visible.length - 1)] ?? bank[0];
+
+  const counts: Record<Level, number> = {
+    Easy: bank.filter((b) => b.level === "Easy").length,
+    Medium: bank.filter((b) => b.level === "Medium").length,
+    Challenge: bank.filter((b) => b.level === "Challenge").length,
+  };
+
+  function chooseLevel(next: Level | "All") {
+    setLevel(next);
+    setIdx(0);
+    setInput("");
+    setResult(null);
+  }
 
   function check() {
     const r = grade(item.question, input);
@@ -38,15 +61,15 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
     }).catch(() => {});
   }
 
-  function next(targetLevel?: PracticeItem["level"]) {
-    let n = idx;
+  function next(targetLevel?: Level) {
+    // "Try a Challenge" has to leave the current filter, or the suggestion
+    // would point at questions the filter is hiding.
     if (targetLevel) {
-      const found = bank.findIndex((b) => b.level === targetLevel);
-      if (found >= 0) n = found;
+      setLevel(targetLevel);
+      setIdx(0);
     } else {
-      n = (idx + 1) % bank.length;
+      setIdx((i) => (i + 1) % Math.max(1, visible.length));
     }
-    setIdx(n);
     setInput("");
     setResult(null);
   }
@@ -71,6 +94,30 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
           {item.level}
         </span>
         <span className="ml-auto text-xs text-[var(--muted)]">🔥 streak {streak}</span>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        {(["All", "Easy", "Medium", "Challenge"] as const).map((option) => {
+          const count = option === "All" ? bank.length : counts[option];
+          if (count === 0) return null;
+          const active = level === option;
+          return (
+            <button
+              key={option}
+              onClick={() => chooseLevel(option)}
+              className={`rounded-full px-3 py-1 text-xs transition ${
+                active
+                  ? "bg-[var(--brand)] text-white"
+                  : "border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              {option} <span className="opacity-70">{count}</span>
+            </button>
+          );
+        })}
+        <span className="ml-auto text-xs text-[var(--muted)]">
+          {Math.min(idx + 1, visible.length)} of {visible.length}
+        </span>
       </div>
 
       <p className="text-sm leading-relaxed text-[var(--text)]/90">{item.prompt}</p>
@@ -110,6 +157,18 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
               {result.correct ? "✅ Correct!" : "❌ Not yet"} · score {Math.round(result.score * 100)}%
             </div>
             <div className="mt-1 text-[var(--text)]/85">{result.feedback}</div>
+
+            {/* Shown for every question kind, not folded into the sentence
+                above. This is practice, not an exam: numeric and true/false
+                used to say "not quite" and leave a student with no way to
+                find out what the answer actually was, which teaches nothing
+                and is where a discouraged student stops. */}
+            {result.correctAnswer && (
+              <div className="mt-2 rounded-xl bg-black/25 px-3 py-2">
+                <span className="text-[11px] uppercase tracking-widest text-[var(--muted)]">Answer</span>
+                <div className="text-[var(--good)]">{result.correctAnswer}</div>
+              </div>
+            )}
             {(item.question.kind === "numeric") && (
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 <Chip ok={result.details.valueOk} label="value" />

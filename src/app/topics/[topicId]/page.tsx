@@ -75,6 +75,21 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
             <Stat icon="✓" label="Teacher-approved" tone="muted" />
             {sourceFile && <Stat icon="📎" label={sourceFile} tone="muted" />}
           </div>
+
+          {/* The Practice Zone sits after the material, which is the right
+              reading order — but on a 29-section lesson that puts it several
+              screens down, so a student who came back only to practise had to
+              scroll past everything to find it. A plain anchor jumps there
+              without duplicating the component or shipping any JS. */}
+          {bank.length > 0 && (
+            <a
+              href="#practice"
+              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-[var(--brand)] px-5 py-2.5 text-sm font-medium text-white transition hover:-translate-y-0.5"
+            >
+              🎯 Practise now
+              <span className="opacity-75">· {bank.length} questions</span>
+            </a>
+          )}
         </div>
       </section>
 
@@ -91,7 +106,9 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
           />
 
           {bank.length > 0 ? (
-            <PracticeZone key={topicId} bank={bank} />
+            <div id="practice" className="scroll-mt-24">
+              <PracticeZone key={topicId} bank={bank} />
+            </div>
           ) : (
             <div className="rounded-3xl border border-dashed border-[var(--border)] p-6 text-center text-sm text-[var(--muted)]">
               🎯 Practice questions are being prepared from this material — your teacher approves them before they
