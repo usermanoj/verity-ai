@@ -1,6 +1,6 @@
 import Link from "next/link";
-import TeacherDashboard from "@/components/teacher/TeacherDashboard";
-import { CLASS } from "@/data/monitoring";
+import TeacherAnalyticsView from "@/components/analytics/TeacherAnalyticsView";
+import { getTeacherAnalytics } from "@/lib/analytics";
 import { requireRole } from "@/lib/auth";
 
 // Auth-gated: never prerender. The auth helpers read cookies at request
@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 
 export default async function TeacherPage() {
   await requireRole("teacher", "/teacher");
+  const data = await getTeacherAnalytics();
+
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
@@ -21,11 +23,17 @@ export default async function TeacherPage() {
         </div>
       </div>
 
-      <h1 className="text-3xl font-bold tracking-tight">AI Monitoring & Progress</h1>
-      <p className="mt-1 text-[var(--muted)]">{CLASS.name} — transparent, guided AI use across your class.</p>
+      <h1 className="text-3xl font-bold tracking-tight">Your teaching material</h1>
+      <p className="mt-1 text-[var(--muted)]">
+        What your students can see, what is waiting on you, and where the gaps are.
+      </p>
 
       <div className="mt-8">
-        <TeacherDashboard />
+        {data ? (
+          <TeacherAnalyticsView data={data} />
+        ) : (
+          <p className="text-sm text-[var(--muted)]">Couldn&apos;t load your figures just now — please refresh.</p>
+        )}
       </div>
     </main>
   );
