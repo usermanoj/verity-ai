@@ -31,8 +31,49 @@ export type SchoolAnalytics = {
   weekly: { week: string; count: number }[];
 };
 
+// Learning analytics — what students actually did. Empty until students sign
+// in, join a class and answer something; see migration 0018.
+export type Attainment = { attempts: number; correct: number; studentsEnrolled: number; studentsActive: number };
+export type HardTopic = { topic: string; attempts: number; correct: number };
+export type AssistantUse = {
+  studentsUsing: number;
+  intents: { intent: string; count: number }[];
+  shortcutting: number;
+};
+
+export type TeacherLearning = {
+  overall: Attainment;
+  bySection: {
+    section: string;
+    subject: string;
+    grade: string;
+    attempts: number;
+    correct: number;
+    enrolled: number;
+    active: number;
+  }[];
+  hardestTopics: HardTopic[];
+  students: { name: string; attempts: number; correct: number }[];
+  assistant: AssistantUse;
+};
+
+export type SchoolLearning = {
+  overall: Attainment;
+  bySubject: { subject: string; grade: string; attempts: number; correct: number }[];
+  hardestTopics: HardTopic[];
+  assistant: AssistantUse;
+};
+
 export async function getTeacherAnalytics(): Promise<TeacherAnalytics | null> {
   return callAnalytics<TeacherAnalytics>("teacher_analytics");
+}
+
+export async function getTeacherLearning(): Promise<TeacherLearning | null> {
+  return callAnalytics<TeacherLearning>("teacher_learning_analytics");
+}
+
+export async function getSchoolLearning(): Promise<SchoolLearning | null> {
+  return callAnalytics<SchoolLearning>("school_learning_analytics");
 }
 
 export async function getSchoolAnalytics(): Promise<SchoolAnalytics | null> {
@@ -43,7 +84,9 @@ export async function getSchoolAnalytics(): Promise<SchoolAnalytics | null> {
 // message. The RPCs are role-gated and return nothing at all to a caller
 // without the right role, so null is also what a wrong-role request produces
 // — the page never has to decide whether it is allowed to see this.
-async function callAnalytics<T>(fn: "teacher_analytics" | "school_analytics"): Promise<T | null> {
+type AnalyticsFn = "teacher_analytics" | "school_analytics" | "teacher_learning_analytics" | "school_learning_analytics";
+
+async function callAnalytics<T>(fn: AnalyticsFn): Promise<T | null> {
   if (!hasSupabase()) return null;
   try {
     const supabase = await supabaseServer();

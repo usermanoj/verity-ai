@@ -449,6 +449,14 @@ export type Database = {
         Args: { p_code: string };
         Returns: unknown;
       };
+      teacher_learning_analytics: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
+      school_learning_analytics: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
       teacher_analytics: {
         Args: Record<string, never>;
         Returns: unknown;

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import TeacherAnalyticsView from "@/components/analytics/TeacherAnalyticsView";
-import { getTeacherAnalytics } from "@/lib/analytics";
+import { getTeacherAnalytics, getTeacherLearning } from "@/lib/analytics";
 import ClassCodes, { type ClassCode } from "@/components/classes/ClassCodes";
 import { Panel } from "@/components/analytics/charts";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TeacherPage() {
   await requireRole("teacher", "/teacher");
-  const [data, codes] = await Promise.all([getTeacherAnalytics(), getClassCodes()]);
+  const [data, learning, codes] = await Promise.all([getTeacherAnalytics(), getTeacherLearning(), getClassCodes()]);
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
@@ -38,7 +38,7 @@ export default async function TeacherPage() {
         </Panel>
 
         {data ? (
-          <TeacherAnalyticsView data={data} />
+          <TeacherAnalyticsView data={data} learning={learning} />
         ) : (
           <p className="text-sm text-[var(--muted)]">Couldn&apos;t load your figures just now — please refresh.</p>
         )}

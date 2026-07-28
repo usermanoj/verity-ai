@@ -1,5 +1,6 @@
 import { BarList, Locked, Panel, Stat, Trend } from "./charts";
-import type { SchoolAnalytics } from "@/lib/analytics";
+import { SchoolLearningPanels } from "./LearningPanels";
+import type { SchoolAnalytics, SchoolLearning } from "@/lib/analytics";
 
 // The oversight view. A head of department or principal is not marking work;
 // they are answering "is this actually being adopted, and where is it thin".
@@ -9,9 +10,11 @@ import type { SchoolAnalytics } from "@/lib/analytics";
 // reading the same one are asking the same question at different altitudes.
 export default function SchoolAnalyticsView({
   data,
+  learning,
   scope,
 }: {
   data: SchoolAnalytics;
+  learning: SchoolLearning | null;
   scope: "department" | "school";
 }) {
   const totalSections = data.coverage.reduce((n, c) => n + c.sections, 0);
@@ -81,11 +84,19 @@ export default function SchoolAnalyticsView({
         </Panel>
       </div>
 
-      <Locked title="Learning outcomes" needs="student sign-in">
-        Attainment by class, topics a year group consistently struggles with, whether the assistant is being used to
-        learn or to shortcut — these are the numbers this role most wants, and every one of them requires student work
-        to be attributable. Until students sign in, nothing is recorded, so nothing is estimated here.
-      </Locked>
+      {learning && learning.overall.attempts > 0 ? (
+        <>
+          <h2 className="pt-2 text-sm font-semibold uppercase tracking-widest text-[var(--muted)]">
+            Learning outcomes
+          </h2>
+          <SchoolLearningPanels data={learning} />
+        </>
+      ) : (
+        <Locked title="Learning outcomes" needs="students to join and practise">
+          Attainment by class, topics a year group consistently struggles with, and whether the assistant is being
+          used to learn or to shortcut. Nothing has been recorded yet, so nothing is estimated here.
+        </Locked>
+      )}
     </div>
   );
 }
