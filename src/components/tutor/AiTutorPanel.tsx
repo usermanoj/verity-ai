@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CHECKABLE_CHUNK_IDS } from "@/lib/tutor";
 import RichText from "./RichText";
+import SourceCite, { parseCite } from "./SourceCite";
 
 type Intent = "explain" | "translate" | "example" | "askme" | "check";
 type EslLevel = "advanced" | "intermediate" | "beginner" | "beginner_zh";
@@ -49,6 +50,14 @@ function splitCite(text: string): { body: string; cite?: string } {
   const idx = text.indexOf("📖 Based on:");
   if (idx === -1) return { body: text };
   return { body: text.slice(0, idx).trim(), cite: text.slice(idx).trim() };
+}
+
+// One line, for the inline "Checking against" hint where a chip row would be
+// too much furniture.
+function shortCite(cite: string): string {
+  const { file, sections } = parseCite(cite);
+  if (sections.length === 0) return file ?? cite.replace("📖 Based on: ", "");
+  return sections.length === 1 ? `Section ${sections[0]}` : `Sections ${sections.join(", ")}`;
 }
 
 // --- Language-aware read-aloud -------------------------------------------
@@ -152,7 +161,18 @@ async function consumeNdjsonStream(
 }
 // ---------------------------------------------------------------------------
 
-export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string; topicTitle: string }) {
+export default function AiTutorPanel({
+  topicId,
+  topicTitle,
+  sectionAnchors,
+}: {
+  topicId: string;
+  topicTitle: string;
+  // Section number -> element id, so a citation can jump to the passage it
+  // came from. Optional: the two demo topics have hand-built layouts with no
+  // per-section anchors, and an unlinked chip beats a link to the wrong text.
+  sectionAnchors?: Record<string, string>;
+}) {
   const [messages, setMessages] = useState<Msg[]>([
     {
       id: nextId(),
@@ -362,11 +382,7 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
                 ) : (
                   <p className="whitespace-pre-wrap">{m.text}</p>
                 )}
-                {m.cite && (
-                  <div className="mt-2 rounded-lg bg-[rgba(34,211,238,0.12)] px-2 py-1 text-xs text-[var(--brand2)]">
-                    {m.cite}
-                  </div>
-                )}
+                {m.cite && <SourceCite cite={m.cite} anchors={sectionAnchors} />}
                 {m.role === "ai" && !m.streaming && (
                   <div className="mt-1.5 flex items-center gap-3">
                     <button onClick={() => speak(m.text)} className="text-xs text-[var(--muted)] hover:text-[var(--text)]">🔊 Read aloud</button>
@@ -395,7 +411,10 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
             {checkableChunk && (
               <div className="mt-3 text-[11px] text-[var(--muted)]">
-                🎯 Checking against: <span className="text-[var(--brand2)]">{checkableChunk.replace("📖 Based on: ", "").replace(" (demo mode)", "")}</span>
+                {/* Same citation, same problem: this used to print the raw
+                    string, so "Checking against:" was followed by the filename
+                    repeated once per section. */}
+                🎯 Checking against: <span className="text-[var(--brand2)]">{shortCite(checkableChunk)}</span>
               </div>
             )}
             <input
