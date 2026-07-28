@@ -2,6 +2,8 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import { aiModel, gatewayFailover, STRUCTURED_FALLBACK_MODELS, withRateLimitRetry } from "@/lib/ai";
 import type { Question } from "@/lib/grade";
+import { validateQuestion } from "./validate";
+import { verifyQuestions } from "./verify";
 
 // z.union, not z.discriminatedUnion.
 //
@@ -82,6 +84,11 @@ const SYSTEM_PROMPT = [
   "3. Keep the English plain and the sentences short. Test the physics, not the reading level — but keep subject terminology exact.",
   "4. Distractors must be plausible and wrong, drawn from the same topic. Never make the right answer the longest or most detailed option.",
   "5. Prefer at least one matching or fill question covering the section's key vocabulary, since that is what an ESL student most needs to retain.",
+  "6. A matching question must have exactly one defensible pairing. Every term distinct, every meaning distinct, and no term that the source lets you pair with two different meanings. If the source does not state a meaning for a term, leave that term out — do not infer one.",
+  "7. A fill-in-the-blank prompt must SHOW the gap as ____ inside the sentence, so the student can see which word was removed.",
+  "8. Ask only what the source answers. If you find yourself reasoning past the text to justify an answer, that question does not belong in the set.",
+  "9. Use numeric ONLY when the source states a number or gives a formula that produces one. If the source answers in words (\"a short time\", \"the far end\"), never force it into a number.",
+  "10. A true/false prompt must be a STATEMENT the student judges, not a question. \"Iron is easy to magnetise.\" is right; \"What happens to iron?\" cannot be answered true or false.",
 ].join("\n");
 
 // AI-assisted, not AI-decided: every generated question must be answerable
@@ -89,6 +96,12 @@ const SYSTEM_PROMPT = [
 // student ever sees it (see ROADMAP.md §4's human-in-the-loop non-
 // negotiable). The deterministic grader in lib/grade.ts never changes —
 // this only produces more Question objects for it to grade.
+// Set AI_VERIFY_QUESTIONS=0 to skip the verification pass. It costs one extra
+// model call per section, which is real money on a large upload — but it is
+// the only check that reads the source, so turning it off means trusting
+// generation alone.
+const VERIFY = process.env.AI_VERIFY_QUESTIONS !== "0";
+
 export async function generatePracticeQuestions(chunkHeading: string | null, chunkText: string): Promise<GeneratedQuestion[]> {
   const { output } = await withRateLimitRetry(() =>
     generateText({
@@ -100,7 +113,23 @@ export async function generatePracticeQuestions(chunkHeading: string | null, chu
     }),
   );
 
-  return output.questions.map((q) => ({ ...q, question: withoutNulls(q.question) as Question }));
+  const generated = output.questions.map((q) => ({ ...q, question: withoutNulls(q.question) as Question }));
+
+  // Two gates before a question is ever offered to a teacher.
+  //
+  // The first is free and deterministic: a question whose own shape makes it
+  // unanswerable — duplicate options, a matching row with no unique pairing,
+  // a fill-in-the-blank with no blank — is dropped outright. Measured on a
+  // real deck, about one in twelve failed this.
+  //
+  // The second reads the source. It catches the well-formed question whose
+  // answer simply is not in the material, which no structural rule can see
+  // and which is the failure that actually costs a student marks.
+  const wellFormed = generated.filter((q) => validateQuestion(q.prompt, q.question).length === 0);
+  if (!VERIFY || wellFormed.length === 0) return wellFormed;
+
+  const verified = await verifyQuestions(chunkHeading, chunkText, wellFormed);
+  return verified.filter((v) => v.ok).map((v) => v.question);
 }
 
 // Turns the schema's explicit nulls back into absent keys.
