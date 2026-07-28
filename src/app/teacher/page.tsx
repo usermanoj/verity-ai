@@ -2,6 +2,8 @@ import Link from "next/link";
 import TeacherAnalyticsView from "@/components/analytics/TeacherAnalyticsView";
 import { getTeacherAnalytics, getTeacherLearning } from "@/lib/analytics";
 import ClassCodes, { type ClassCode } from "@/components/classes/ClassCodes";
+import JoinQr from "@/components/classes/JoinQr";
+import { headers } from "next/headers";
 import { Panel } from "@/components/analytics/charts";
 import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
@@ -36,7 +38,7 @@ export default async function TeacherPage() {
 
       <div className="mt-8 space-y-5">
         <Panel title="Class codes" hint="Students sign in with their school account, then enter a code once to join a section.">
-          <ClassCodes initial={codes} />
+          <ClassCodes initial={codes} qrFor={await joinQrs(codes)} />
         </Panel>
 
         {data ? (
@@ -58,4 +60,23 @@ async function getClassCodes(): Promise<ClassCode[]> {
   } catch {
     return [];
   }
+}
+
+// A QR has to carry an absolute URL, so the origin comes from the request
+// rather than a hardcoded domain — the same code then works on localhost,
+// a preview deployment and production without configuration.
+async function joinQrs(codes: ClassCode[]): Promise<Record<string, React.ReactNode>> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  if (!host) return {};
+  const protocol = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
+
+  const entries = codes
+    .filter((c) => c.code)
+    .map((c) => [
+      c.classId,
+      <JoinQr key={c.classId} url={`${protocol}://${host}/join?code=${encodeURIComponent(c.code!)}`} />,
+    ] as const);
+
+  return Object.fromEntries(entries);
 }
