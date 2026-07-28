@@ -6,11 +6,33 @@ import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { Provider } from "@supabase/supabase-js";
 
+// The callback has always redirected here with ?error=… on failure, and this
+// page has always thrown it away — so a failed sign-in was pixel-identical to
+// a fresh one. You authenticate with Google, arrive back at "Sign in to
+// Verity AI", and the only available conclusion is that the button doesn't
+// work.
+//
+// Each message says what a person can actually do about it. "no_account" and
+// "no_school" are setup faults, not user faults, and saying so is what stops
+// someone trying the same thing a third time.
+const ERRORS: Record<string, string> = {
+  auth_failed: "Sign-in didn't complete. Please try again.",
+  missing_code: "Sign-in didn't complete. Please try again.",
+  no_account:
+    "You're signed in with your school account, but you don't have access to Verity AI yet. Ask your teacher or IT admin to add you.",
+  no_school:
+    "This site isn't finished being set up — no school has been configured yet. Please contact your IT admin.",
+  provisioning_failed:
+    "We signed you in but couldn't finish setting up your account. Please try again, or contact your IT admin.",
+};
+
 function LoginButtons() {
   const searchParams = useSearchParams();
   const [pending, setPending] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
   const next = searchParams.get("next") || "/";
+  const errorCode = searchParams.get("error");
+  const errorFromCallback = errorCode ? (ERRORS[errorCode] ?? ERRORS.auth_failed) : null;
 
   async function signIn(provider: Provider) {
     setError(null);
@@ -50,6 +72,14 @@ function LoginButtons() {
 
   return (
     <div className="glass rounded-3xl p-6">
+      {errorFromCallback && (
+        <p
+          role="alert"
+          className="mb-4 rounded-2xl border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-4 py-3 text-left text-sm"
+        >
+          {errorFromCallback}
+        </p>
+      )}
       <div className="space-y-3">
         <button
           onClick={() => signIn("google")}

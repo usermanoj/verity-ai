@@ -12,30 +12,57 @@ export type AppUser = {
   displayName: string | null;
 };
 
-// Returns null when Supabase isn't configured (dormant — see hasSupabase())
-// or when nobody is signed in. Never throws.
-export async function getCurrentAppUser(): Promise<AppUser | null> {
-  if (!hasSupabase()) return null;
+// "Signed out" and "signed in but not provisioned" both produce a null user,
+// and collapsing them is what turned a setup mistake into an unexplained
+// loop: the callback failed to create the public.users row, every gated page
+// bounced to /login, and the login page cheerfully offered to sign in an
+// account that was already signed in.
+//
+// They are different states and the caller has to be able to tell them apart.
+type Session =
+  | { kind: "anonymous" }
+  | { kind: "unprovisioned" } // authenticated with the IdP, but no row here
+  | { kind: "user"; user: AppUser };
 
+async function readSession(): Promise<Session> {
   const supabase = await supabaseServer();
   const { data: auth } = await supabase.auth.getClaims();
   const sub = auth?.claims?.sub;
-  if (!sub) return null;
+  if (!sub) return { kind: "anonymous" };
 
   const { data: row } = await supabase
     .from("users")
     .select("id, role, school_id, display_name")
     .eq("id", sub)
     .maybeSingle();
-  if (!row) return null;
+  if (!row) return { kind: "unprovisioned" };
 
   return {
-    id: row.id as string,
-    email: (auth.claims.email as string | undefined) ?? null,
-    role: row.role as AppRole,
-    schoolId: row.school_id as string,
-    displayName: row.display_name as string | null,
+    kind: "user",
+    user: {
+      id: row.id as string,
+      email: (auth.claims.email as string | undefined) ?? null,
+      role: row.role as AppRole,
+      schoolId: row.school_id as string,
+      displayName: row.display_name as string | null,
+    },
   };
+}
+
+// Returns null when Supabase isn't configured (dormant — see hasSupabase())
+// or when nobody is usable is signed in. Never throws.
+export async function getCurrentAppUser(): Promise<AppUser | null> {
+  if (!hasSupabase()) return null;
+  const session = await readSession();
+  return session.kind === "user" ? session.user : null;
+}
+
+// Where to send someone who isn't a usable user yet. An unprovisioned session
+// carries a reason so the login page can say what happened rather than
+// silently inviting a third identical attempt.
+function signInPath(session: Session, currentPath: string): string {
+  const next = `next=${encodeURIComponent(currentPath)}`;
+  return session.kind === "unprovisioned" ? `/login?error=no_account&${next}` : `/login?${next}`;
 }
 
 // Gate a Server Component page by exact role. True no-op — returns null
@@ -54,16 +81,16 @@ export async function getCurrentAppUser(): Promise<AppUser | null> {
 export async function requireSignedIn(currentPath: string): Promise<AppUser | null> {
   if (!hasSupabase()) return null;
 
-  const user = await getCurrentAppUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(currentPath)}`);
-  return user;
+  const session = await readSession();
+  if (session.kind !== "user") redirect(signInPath(session, currentPath));
+  return session.user;
 }
 
 export async function requireRole(role: AppRole, currentPath: string): Promise<AppUser | null> {
   if (!hasSupabase()) return null;
 
-  const user = await getCurrentAppUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(currentPath)}`);
-  if (user.role !== role) redirect("/");
-  return user;
+  const session = await readSession();
+  if (session.kind !== "user") redirect(signInPath(session, currentPath));
+  if (session.user.role !== role) redirect("/");
+  return session.user;
 }
