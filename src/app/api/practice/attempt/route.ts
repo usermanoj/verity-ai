@@ -9,6 +9,8 @@ import type { GradeResult } from "@/lib/grade";
 // so this endpoint only ever records the result, never computes it. Always
 // returns 200: a logging failure must never surface as a UI error to a
 // student answering a practice question.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(req: NextRequest) {
   if (!hasSupabase()) {
     return NextResponse.json({ logged: false });
@@ -33,6 +35,12 @@ export async function POST(req: NextRequest) {
     await supabase.from("practice_attempts").insert({
       student_id: user.id,
       question_id: questionId,
+      // The constrained reference, set only for generated questions. The two
+      // seeded demo topics use hand-authored banks whose ids ("e1", "m1") are
+      // not uuids and reference no row, so they keep question_id alone —
+      // which is why the foreign key needed its own column rather than
+      // replacing the existing one.
+      generated_question_id: UUID.test(questionId) ? questionId : null,
       answer,
       graded_result: gradedResult,
       graded_by: "rule",
