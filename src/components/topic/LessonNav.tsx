@@ -51,8 +51,22 @@ export default function LessonNav({ headings }: { headings: { id: string; title:
       aria-label="Lesson contents"
       className="sticky top-0 z-20 -mx-6 mt-6 border-b border-[var(--border)] bg-[rgba(10,12,24,0.72)] px-6 pt-4 backdrop-blur-xl"
     >
-      <div className="mb-2 text-[11px] uppercase tracking-widest text-[var(--muted)]">In this lesson</div>
-      <div ref={railRef} className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="mb-2 flex items-baseline gap-2 text-[11px] uppercase tracking-widest text-[var(--muted)]">
+        <span>In this lesson</span>
+        {/* The count is the other half of the answer: a rail that scrolls is
+            only useful if you know roughly how far it goes. */}
+        <span className="normal-case tracking-normal opacity-70">
+          {headings.length} section{headings.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {/* The scrollbar used to be hidden outright. On a 29-section deck the
+          rail ends mid-chip at the right edge and nothing says there is more,
+          so students read the first six headings as the whole lesson. A thin
+          one is the affordance; hiding it was style at the cost of meaning. */}
+      <div
+        ref={railRef}
+        className="flex gap-2 overflow-x-auto pb-2 [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--border)] [&::-webkit-scrollbar-thumb:hover]:bg-[var(--brand)] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:h-1.5"
+      >
         {headings.map((h, i) => {
           const active = h.id === activeId;
           return (
