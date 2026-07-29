@@ -14,12 +14,23 @@ const MESSAGES: Record<AppLocale, typeof enMessages> = {
   zh: zhMessages as typeof enMessages,
 };
 
+// Descriptions, not destinations.
+//
+// These were four links to /subjects, /teacher, /hod and /principal under the
+// heading "Choose your role" — which is a promise the product cannot keep. A
+// role is not chosen; it comes from the school's directory (staff_allowlist),
+// and clicking "Principal" as a student took you to a login and then bounced
+// you straight back out. Two sign-in paths, one of them offering a choice
+// that was not real.
+//
+// One door now: Sign in. These cards say what each role gets, so a head of
+// department can see the product covers them, without implying they select it.
 const ROLE_KEYS = ["student", "teacher", "hod", "principal"] as const;
-const ROLE_META: Record<(typeof ROLE_KEYS)[number], { icon: string; href: string; primary?: boolean }> = {
-  student: { icon: "🎒", href: "/subjects", primary: true },
-  teacher: { icon: "👩‍🏫", href: "/teacher", primary: true },
-  hod: { icon: "📊", href: "/hod" },
-  principal: { icon: "🏫", href: "/principal" },
+const ROLE_ICON: Record<(typeof ROLE_KEYS)[number], string> = {
+  student: "🎒",
+  teacher: "👩‍🏫",
+  hod: "📊",
+  principal: "🏫",
 };
 
 const FEATURE_KEYS = ["closedCorpus", "translation", "interactive", "guides", "adaptive", "grading"] as const;
@@ -80,7 +91,7 @@ export default function HomeContent({ locale, session }: { locale: AppLocale; se
           })}
         </p>
         <div className="mt-8 flex items-center justify-center gap-3">
-          <Link href="/subjects" className="rounded-2xl bg-[var(--brand)] px-6 py-3 font-medium text-white transition hover:-translate-y-0.5 glow-brand">
+          <Link href="/login" className="rounded-2xl bg-[var(--brand)] px-6 py-3 font-medium text-white transition hover:-translate-y-0.5 glow-brand">
             {t("ctaStudent")}
           </Link>
           <Link href="/topics/moments" className="glass rounded-2xl px-6 py-3 font-medium transition hover:-translate-y-0.5">
@@ -101,25 +112,18 @@ export default function HomeContent({ locale, session }: { locale: AppLocale; se
       </section>
 
       <section className="mt-16">
-        <h2 className="mb-4 text-center text-sm font-medium uppercase tracking-widest text-[var(--muted)]">
+        <h2 className="text-center text-sm font-medium uppercase tracking-widest text-[var(--muted)]">
           {t("rolesHeading")}
         </h2>
+        <p className="mx-auto mb-5 mt-2 max-w-xl text-center text-sm text-[var(--muted)]">{t("rolesNote")}</p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {ROLE_KEYS.map((key) => {
-            const meta = ROLE_META[key];
-            return (
-              <Link
-                key={key}
-                href={meta.href}
-                className={`glass group rounded-3xl p-5 transition hover:-translate-y-1 hover:border-[var(--brand)] ${meta.primary ? "ring-1 ring-[var(--brand)]" : ""}`}
-              >
-                <div className="mb-3 text-3xl transition group-hover:scale-110">{meta.icon}</div>
-                <div className="font-semibold">{t(`roles.${key}.label`)}</div>
-                <div className="mt-1 text-sm text-[var(--muted)]">{t(`roles.${key}.desc`)}</div>
-                {meta.primary && <div className="mt-3 text-xs font-medium text-[var(--brand2)]">{t("liveDemo")}</div>}
-              </Link>
-            );
-          })}
+          {ROLE_KEYS.map((key) => (
+            <div key={key} className="glass rounded-3xl p-5">
+              <div className="mb-3 text-3xl">{ROLE_ICON[key]}</div>
+              <div className="font-semibold">{t(`roles.${key}.label`)}</div>
+              <div className="mt-1 text-sm text-[var(--muted)]">{t(`roles.${key}.desc`)}</div>
+            </div>
+          ))}
         </div>
       </section>
 

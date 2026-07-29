@@ -22,7 +22,6 @@ export default async function TeacherInsightsPage() {
       <div className="mb-6 flex items-center justify-between">
         <Link href="/" className="text-sm text-[var(--muted)] hover:text-[var(--text)]">← Home</Link>
         <div className="flex items-center gap-3 text-sm text-[var(--muted)]">
-          <span className="rounded-full bg-[rgba(99,102,241,0.18)] px-3 py-1 text-[var(--brand2)]">👩‍🏫 Teacher</span>
           <SessionBadge />
         </div>
       </div>
