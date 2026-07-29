@@ -27,7 +27,16 @@ export default async function TeacherPage() {
   // Sections a student has joined that have nothing to read. The student sees
   // an empty page they cannot diagnose, and until now nothing told the
   // teacher the two halves had not met.
-  const stranded = codes.filter((c) => c.hasMaterial === false && c.students > 0);
+  const stranded = codes.filter((c) => (c.materials?.length ?? 0) === 0 && c.students > 0);
+  const strandedStudents = stranded.reduce((n, c) => n + c.students, 0);
+  // Built here rather than assembled from JSX text nodes. The first version
+  // rendered "1 studentcan't see any material" — JSX collapses the whitespace
+  // around an expression that sits on its own line, and a sentence split
+  // across three of them is a sentence whose spacing depends on formatting.
+  const strandedHeadline = `${strandedStudents} student${strandedStudents === 1 ? "" : "s"} can't see any material.`;
+  const strandedDetail =
+    `${stranded.map((c) => `${c.grade} ${c.subject} · ${c.section}`).join(", ")} — ` +
+    `${stranded.length === 1 ? "this section has" : "these sections have"} students joined but nothing approved reaching them.`;
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
@@ -50,13 +59,7 @@ export default async function TeacherPage() {
       <div className="space-y-5">
         {stranded.length > 0 && (
           <div className="rounded-2xl border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-4 py-3 text-sm">
-            <strong>
-              {stranded.reduce((n, c) => n + c.students, 0)} student
-              {stranded.reduce((n, c) => n + c.students, 0) === 1 ? "" : "s"} can&apos;t see any material.
-            </strong>{" "}
-            {stranded.map((c) => `${c.grade} ${c.subject} · ${c.section}`).join(", ")} —{" "}
-            {stranded.length === 1 ? "this section has" : "these sections have"} students joined but nothing approved
-            reaching them.{" "}
+            <strong>{strandedHeadline}</strong> {strandedDetail}{" "}
             <Link href="/teacher/ingest" className="text-[var(--brand2)] hover:underline">
               Upload material →
             </Link>
