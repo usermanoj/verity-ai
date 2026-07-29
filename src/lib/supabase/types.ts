@@ -50,6 +50,11 @@ export type Database = {
           answer: string;
           graded_result: Record<string, unknown>;
           graded_by: "rule" | "llm";
+          // Snapshot of the question, so an attempt stays readable after the
+          // question is regenerated (migration 0028).
+          question_prompt: string | null;
+          question_level: string | null;
+          document_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -60,6 +65,9 @@ export type Database = {
           answer: string;
           graded_result: Record<string, unknown>;
           graded_by: "rule" | "llm";
+          question_prompt?: string | null;
+          question_level?: string | null;
+          document_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -572,6 +580,15 @@ export type Database = {
       // School-wide language support, for a HOD or principal (0025).
       school_language_analytics: {
         Args: Record<string, never>;
+        Returns: unknown;
+      };
+      // Per-student progress for the teacher (migration 0029).
+      teacher_student_progress: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
+      teacher_student_detail: {
+        Args: { p_student_id: string };
         Returns: unknown;
       };
       rotate_class_code: {

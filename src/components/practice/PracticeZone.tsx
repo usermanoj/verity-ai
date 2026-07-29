@@ -87,7 +87,15 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
     fetch("/api/practice/attempt", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ questionId: item.id, answer: input, gradedResult: r }),
+      // The prompt and level travel with the attempt so the record survives
+      // the question being regenerated.
+      body: JSON.stringify({
+        questionId: item.id,
+        answer: input,
+        gradedResult: r,
+        prompt: item.prompt,
+        level: item.level,
+      }),
     }).catch(() => {});
   }
 
