@@ -323,7 +323,7 @@ function AnswerInput({
 // Electromagnet / Permanent magnet", one row per property — and keying by
 // text made the two rows share a single answer: choosing for the first
 // silently filled the third, and grading collapsed four rows into two.
-function MatchingInput({
+export function MatchingInput({
   pairs,
   value,
   onChange,
