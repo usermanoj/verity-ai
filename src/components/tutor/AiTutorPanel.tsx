@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CHECKABLE_CHUNK_IDS } from "@/lib/tutor";
 import RichText from "./RichText";
@@ -30,12 +30,76 @@ const BUTTONS: { intent: Intent; label: string; icon: string; hint: string }[] =
   { intent: "translate", label: "Translate", icon: "🌏", hint: "Translate the last reply" },
 ];
 
+// How hard the assistant is allowed to make its English — the ESL feature the
+// whole product is named for. Same approved material, pitched at the reader.
+//
+// The old labels didn't say what separated them: "Simplified English" and
+// "Beginner English" are the same phrase to a twelve-year-old, and nothing
+// hinted that only the last one carried Chinese. These name the ladder.
+//
+// The four options are really two axes — three reading levels, and Chinese
+// glosses on or off — collapsed into one list, which is why "full English
+// with 中文" cannot be asked for. Splitting them is the better design and a
+// deliberate next step, not a silent one.
 const LEVELS: { id: EslLevel; label: string }[] = [
-  { id: "advanced", label: "English (advanced)" },
-  { id: "intermediate", label: "Simplified English" },
-  { id: "beginner", label: "Beginner English" },
-  { id: "beginner_zh", label: "English + 中文" },
+  { id: "advanced", label: "Full English" },
+  { id: "intermediate", label: "Simpler English" },
+  { id: "beginner", label: "Easiest English" },
+  { id: "beginner_zh", label: "Easiest English + 中文" },
 ];
+
+// Remembered per browser. It was useState("intermediate"), so a student who
+// needs the easiest English re-chose it on every lesson and after every
+// reload — a setting nobody keeps setting is a setting nobody uses.
+//
+// Held in a tiny external store read through useSyncExternalStore rather than
+// loaded in an effect. localStorage does not exist during server rendering,
+// so an effect that set state after mount would both trip the "no setState in
+// an effect" rule and render one frame of the wrong value; this hook exists
+// for exactly this shape — a value the server cannot see.
+const LEVEL_KEY = "verity.eslLevel";
+const DEFAULT_LEVEL: EslLevel = "intermediate";
+
+function isLevel(value: string | null): value is EslLevel {
+  return LEVELS.some((l) => l.id === value);
+}
+
+let cachedLevel: EslLevel | null = null;
+const levelListeners = new Set<() => void>();
+
+function readLevel(): EslLevel {
+  if (cachedLevel === null) {
+    try {
+      const stored = window.localStorage.getItem(LEVEL_KEY);
+      cachedLevel = isLevel(stored) ? stored : DEFAULT_LEVEL;
+    } catch {
+      // Private browsing, or storage disabled. The default is fine.
+      cachedLevel = DEFAULT_LEVEL;
+    }
+  }
+  return cachedLevel;
+}
+
+function writeLevel(next: EslLevel) {
+  cachedLevel = next;
+  try {
+    window.localStorage.setItem(LEVEL_KEY, next);
+  } catch {
+    // Not being able to remember the choice must not stop them making it.
+  }
+  for (const notify of levelListeners) notify();
+}
+
+function subscribeLevel(onChange: () => void) {
+  levelListeners.add(onChange);
+  return () => {
+    levelListeners.delete(onChange);
+  };
+}
+
+// The server has no localStorage, so it renders the default and React
+// reconciles after hydration — no mismatch warning.
+const serverLevel = () => DEFAULT_LEVEL;
 
 const DEFAULT_TRANSLATE_SOURCE =
   "A moment is the turning effect of a force. Moment = force × perpendicular distance from the pivot.";
@@ -245,7 +309,7 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
     },
   ]);
   const [question, setQuestion] = useState("");
-  const [level, setLevel] = useState<EslLevel>("intermediate");
+  const level = useSyncExternalStore(subscribeLevel, readLevel, serverLevel);
   const [loading, setLoading] = useState<Intent | null>(null);
   const [needsAnswer, setNeedsAnswer] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
@@ -484,7 +548,9 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
         </div>
         <select
           value={level}
-          onChange={(e) => setLevel(e.target.value as EslLevel)}
+          onChange={(e) => writeLevel(e.target.value as EslLevel)}
+          aria-label="How hard the English should be"
+          title="Same lesson, pitched at your reading level"
           className="glass rounded-xl px-2 py-1.5 text-xs outline-none"
         >
           {LEVELS.map((l) => (
