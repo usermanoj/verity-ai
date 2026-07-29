@@ -7,7 +7,7 @@ import RichText from "./RichText";
 import { speakSequence, type Segment, type Sequence } from "./speech-sequence";
 
 type Intent = "explain" | "translate" | "example" | "askme" | "check";
-type EslLevel = "advanced" | "intermediate" | "beginner" | "beginner_zh";
+type EslLevel = "advanced" | "intermediate" | "beginner";
 type Msg = {
   id: string;
   role: "user" | "ai";
@@ -45,7 +45,6 @@ const LEVELS: { id: EslLevel; label: string }[] = [
   { id: "advanced", label: "Full English" },
   { id: "intermediate", label: "Simpler English" },
   { id: "beginner", label: "Easiest English" },
-  { id: "beginner_zh", label: "Easiest English + 中文" },
 ];
 
 // Remembered per browser. It was useState("intermediate"), so a student who
@@ -58,6 +57,7 @@ const LEVELS: { id: EslLevel; label: string }[] = [
 // an effect" rule and render one frame of the wrong value; this hook exists
 // for exactly this shape — a value the server cannot see.
 const LEVEL_KEY = "verity.eslLevel";
+const CHINESE_KEY = "verity.chinese";
 const DEFAULT_LEVEL: EslLevel = "intermediate";
 
 function isLevel(value: string | null): value is EslLevel {
@@ -65,19 +65,45 @@ function isLevel(value: string | null): value is EslLevel {
 }
 
 let cachedLevel: EslLevel | null = null;
+let cachedChinese: boolean | null = null;
 const levelListeners = new Set<() => void>();
 
-function readLevel(): EslLevel {
-  if (cachedLevel === null) {
-    try {
-      const stored = window.localStorage.getItem(LEVEL_KEY);
-      cachedLevel = isLevel(stored) ? stored : DEFAULT_LEVEL;
-    } catch {
-      // Private browsing, or storage disabled. The default is fine.
-      cachedLevel = DEFAULT_LEVEL;
+function load() {
+  if (cachedLevel !== null && cachedChinese !== null) return;
+  try {
+    const stored = window.localStorage.getItem(LEVEL_KEY);
+    // A browser that stored the old combined value answers BOTH questions:
+    // "beginner_zh" meant easiest English and Chinese glosses. Migrating it
+    // rather than discarding it means a student who had set their preference
+    // keeps it across this change.
+    if (stored === "beginner_zh") {
+      cachedLevel = "beginner";
+      cachedChinese = true;
+      window.localStorage.setItem(LEVEL_KEY, "beginner");
+      window.localStorage.setItem(CHINESE_KEY, "1");
+      return;
     }
+    cachedLevel = isLevel(stored) ? stored : DEFAULT_LEVEL;
+    cachedChinese = window.localStorage.getItem(CHINESE_KEY) === "1";
+  } catch {
+    // Private browsing, or storage disabled. The defaults are fine.
+    cachedLevel = DEFAULT_LEVEL;
+    cachedChinese = false;
   }
-  return cachedLevel;
+}
+
+function readLevel(): EslLevel {
+  load();
+  return cachedLevel ?? DEFAULT_LEVEL;
+}
+
+function readChinese(): boolean {
+  load();
+  return cachedChinese ?? false;
+}
+
+function notifyLevel() {
+  for (const notify of levelListeners) notify();
 }
 
 function writeLevel(next: EslLevel) {
@@ -87,7 +113,17 @@ function writeLevel(next: EslLevel) {
   } catch {
     // Not being able to remember the choice must not stop them making it.
   }
-  for (const notify of levelListeners) notify();
+  notifyLevel();
+}
+
+function writeChinese(next: boolean) {
+  cachedChinese = next;
+  try {
+    window.localStorage.setItem(CHINESE_KEY, next ? "1" : "0");
+  } catch {
+    // As above.
+  }
+  notifyLevel();
 }
 
 function subscribeLevel(onChange: () => void) {
@@ -97,9 +133,10 @@ function subscribeLevel(onChange: () => void) {
   };
 }
 
-// The server has no localStorage, so it renders the default and React
+// The server has no localStorage, so it renders the defaults and React
 // reconciles after hydration — no mismatch warning.
 const serverLevel = () => DEFAULT_LEVEL;
+const serverChinese = () => false;
 
 const DEFAULT_TRANSLATE_SOURCE =
   "A moment is the turning effect of a force. Moment = force × perpendicular distance from the pivot.";
@@ -310,6 +347,7 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
   ]);
   const [question, setQuestion] = useState("");
   const level = useSyncExternalStore(subscribeLevel, readLevel, serverLevel);
+  const chinese = useSyncExternalStore(subscribeLevel, readChinese, serverChinese);
   const [loading, setLoading] = useState<Intent | null>(null);
   const [needsAnswer, setNeedsAnswer] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
@@ -491,7 +529,7 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
       const res = await fetch("/api/tutor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topicId, intent, question: q, level, answer: ans, turn, history, contextChunkId }),
+        body: JSON.stringify({ topicId, intent, question: q, level, chinese, answer: ans, turn, history, contextChunkId }),
       });
 
       // Stream the reply in: the first delta creates the AI bubble and hides
@@ -546,17 +584,35 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
             <div className="text-xs text-[var(--muted)]">Curriculum-locked · cites sources</div>
           </div>
         </div>
-        <select
-          value={level}
-          onChange={(e) => writeLevel(e.target.value as EslLevel)}
-          aria-label="How hard the English should be"
-          title="Same lesson, pitched at your reading level"
-          className="glass rounded-xl px-2 py-1.5 text-xs outline-none"
-        >
-          {LEVELS.map((l) => (
-            <option key={l.id} value={l.id} className="bg-[#0e1530]">{l.label}</option>
-          ))}
-        </select>
+        {/* Two questions, two controls. They used to be one list, so a strong
+            reader who is new to English — full English, but 中文 for the hard
+            words — had no way to ask for what they needed. */}
+        <div className="flex items-center gap-2">
+          <select
+            value={level}
+            onChange={(e) => writeLevel(e.target.value as EslLevel)}
+            aria-label="How hard the English should be"
+            title="Same lesson, pitched at your reading level"
+            className="glass rounded-xl px-2 py-1.5 text-xs outline-none"
+          >
+            {LEVELS.map((l) => (
+              <option key={l.id} value={l.id} className="bg-[#0e1530]">{l.label}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => writeChinese(!chinese)}
+            aria-pressed={chinese}
+            title="Add a short Chinese gloss after key sentences and technical terms"
+            className={`rounded-xl border px-2.5 py-1.5 text-xs transition ${
+              chinese
+                ? "border-[var(--brand)] bg-[rgba(99,102,241,0.2)] text-[var(--text)]"
+                : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]"
+            }`}
+          >
+            中文
+          </button>
+        </div>
       </div>
 
       <div ref={scrollRef} className="min-h-[240px] flex-1 space-y-3 overflow-y-auto pr-1">
