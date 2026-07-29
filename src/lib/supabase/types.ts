@@ -474,6 +474,12 @@ export type Database = {
         Args: Record<string, never>;
         Returns: unknown;
       };
+      // The dashboard's uploads list (migration 0022). SECURITY DEFINER and
+      // scoped to the caller's own uploads.
+      teacher_material_list: {
+        Args: { p_limit?: number };
+        Returns: unknown;
+      };
       rotate_class_code: {
         Args: { p_class_id: string };
         Returns: unknown;

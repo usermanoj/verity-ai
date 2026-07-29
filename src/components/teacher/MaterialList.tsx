@@ -21,6 +21,7 @@ export type MaterialRow = {
   version: number;
   // Preformatted upstream so this component does no clock reading of its own.
   age: string;
+  uploadedAt: string;
 };
 
 const STATUS: Record<MaterialRow["status"], { label: string; className: string }> = {
@@ -42,6 +43,21 @@ export function relativeTime(iso: string, now: number): string {
   const days = Math.round(hours / 24);
   if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
   return new Date(then).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+// Fixed locale and 24-hour clock: a school timetable is 24-hour, and the
+// server and the browser must not disagree about the string they render.
+const STAMP = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+export function formatStamp(iso: string): string {
+  const t = new Date(iso);
+  return Number.isNaN(t.getTime()) ? "" : STAMP.format(t);
 }
 
 export default function MaterialList({ rows }: { rows: MaterialRow[] }) {
@@ -78,7 +94,12 @@ export default function MaterialList({ rows }: { rows: MaterialRow[] }) {
                 {[row.subject, row.grade].filter(Boolean).join(" · ") || "No class yet"}
                 {row.sections.length > 0 && ` · ${row.sections.join(", ")}`}
                 {" · "}
-                {row.age}
+                {/* Relative answers "is this the one I just uploaded?"; the
+                    exact stamp answers "which of these two runs was it?".
+                    A teacher comparing re-uploads needs both. */}
+                <time dateTime={row.uploadedAt} title={row.uploadedAt}>
+                  {row.age} · {formatStamp(row.uploadedAt)}
+                </time>
               </div>
             </div>
 
