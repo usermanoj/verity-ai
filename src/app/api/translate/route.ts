@@ -3,6 +3,7 @@ import { generateText } from "ai";
 import { aiModel, gatewayFailover, GATEWAY_FALLBACK_MODELS, hasApiKey } from "@/lib/ai";
 import { hasLangfuse } from "@/lib/observability";
 import { contentRepo } from "@/lib/content-repo";
+import { checkTranslation, describeIssues, hasBlockingIssue } from "@/lib/translate/checks";
 
 export const runtime = "nodejs";
 
@@ -53,24 +54,59 @@ export async function POST(req: NextRequest) {
       .map(([en, v]) => `- "${en}" → ${v.zh}`)
       .join("\n");
 
-    const result = await generateText({
-      model: aiModel("translate"),
-      maxOutputTokens: 700,
-      // Translating the same passage twice produced two different renderings
-      // — 铁心 one tap, 铁芯 the next. For a student checking their
-      // understanding that reads as one of them being wrong. Nothing here is
-      // creative work; the same English should always give the same Chinese.
-      temperature: 0,
-      system:
-        `You are a professional bilingual physics teacher translating study material into ${lang} for a Grade 7 ESL student. ` +
-        `Translate faithfully and naturally, keeping the scientific meaning exact. Use this approved terminology glossary for consistency:\n${glossaryLines}\n` +
-        `Return ONLY the translation, no preamble.`,
-      prompt: text,
-      experimental_telemetry: { isEnabled: hasLangfuse(), functionId: "translate" },
-      providerOptions: gatewayFailover(GATEWAY_FALLBACK_MODELS),
-    });
+    const translate = (correction: string) =>
+      generateText({
+        model: aiModel("translate"),
+        maxOutputTokens: 700,
+        // Translating the same passage twice produced two different renderings
+        // — 铁心 one tap, 铁芯 the next. For a student checking their
+        // understanding that reads as one of them being wrong. Nothing here is
+        // creative work; the same English should always give the same Chinese.
+        temperature: 0,
+        system:
+          `You are a professional bilingual physics teacher translating study material into ${lang} for a Grade 7 ESL student. ` +
+          `Translate faithfully and naturally, keeping the scientific meaning exact. Every number, unit and symbol must appear ` +
+          `unchanged. Use this approved terminology glossary for consistency:\n${glossaryLines}\n` +
+          `Return ONLY the translation, no preamble.${correction}`,
+        prompt: text,
+        experimental_telemetry: { isEnabled: hasLangfuse(), functionId: "translate" },
+        providerOptions: gatewayFailover(GATEWAY_FALLBACK_MODELS),
+      });
 
-    return NextResponse.json({ translation: result.text, demo: false });
+    let result = await translate("");
+    let issues = checkTranslation(text, result.text, glossary);
+
+    // One corrective retry, and only for the errors worth spending it on: a
+    // dropped number or an untranslated passage is a fact the student has no
+    // way to check for themselves. A terminology warning is logged, not
+    // retried — withholding a usable translation over word choice serves
+    // nobody, and doubles the cost of every tap.
+    if (hasBlockingIssue(issues)) {
+      console.warn(`[api/translate] retrying after: ${describeIssues(issues)}`);
+      const retry = await translate(
+        `\n\nYour previous attempt was rejected: ${describeIssues(issues)}. ` +
+          `Translate the WHOLE passage, keep every number exactly as written, and output nothing but the translation.`,
+      );
+      const retryIssues = checkTranslation(text, retry.text, glossary);
+      // Keep whichever attempt is sounder rather than assuming the retry is.
+      if (!hasBlockingIssue(retryIssues) || retryIssues.length < issues.length) {
+        result = retry;
+        issues = retryIssues;
+      }
+    }
+
+    // Never silently: a translation that failed a check and was served anyway
+    // has to leave a trace, or the next report of "the Chinese looked wrong"
+    // has nothing behind it.
+    if (issues.length > 0) console.warn(`[api/translate] served with issues: ${describeIssues(issues)}`);
+
+    return NextResponse.json({
+      translation: result.text,
+      demo: false,
+      // For logs and the teacher-facing view; the student sees the
+      // translation either way.
+      issues: issues.map((i) => ({ code: i.code, severity: i.severity })),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ translation: `⚠️ ${message}`, error: true }, { status: 200 });
