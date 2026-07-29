@@ -5,6 +5,25 @@ import type { TeacherAnalytics, TeacherLearning } from "@/lib/analytics";
 // What a teacher needs from a dashboard during rollout is not a leaderboard.
 // It is: what is live to my students, what is waiting on me, and where are
 // the holes. Every number below is counted from their own uploads.
+// Split out so the Overview tab can lead with the four numbers a teacher
+// checks daily, without dragging the whole analysis onto the same screen.
+export function TeacherStats({ data }: { data: TeacherAnalytics }) {
+  const needsAttention = data.documents.pending + data.questions.pending;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Stat label="Live to students" value={data.documents.approved} hint="approved documents" tone="good" />
+      <Stat label="Sections live" value={data.sectionsLive} hint="approved chunks students can read" />
+      <Stat label="Questions live" value={data.questions.approved} hint="approved practice questions" tone="good" />
+      <Stat
+        label="Waiting on you"
+        value={needsAttention}
+        hint={`${data.documents.pending} document${data.documents.pending === 1 ? "" : "s"} · ${data.questions.pending} question${data.questions.pending === 1 ? "" : "s"}`}
+        tone={needsAttention > 0 ? "warn" : "default"}
+      />
+    </div>
+  );
+}
+
 export default function TeacherAnalyticsView({
   data,
   learning,
@@ -13,22 +32,9 @@ export default function TeacherAnalyticsView({
   learning: TeacherLearning | null;
 }) {
   const sectionsWithout = data.sections.filter((s) => !s.hasMaterial);
-  const needsAttention = data.documents.pending + data.questions.pending;
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Live to students" value={data.documents.approved} hint="approved documents" tone="good" />
-        <Stat label="Sections live" value={data.sectionsLive} hint="approved chunks students can read" />
-        <Stat label="Questions live" value={data.questions.approved} hint="approved practice questions" tone="good" />
-        <Stat
-          label="Waiting on you"
-          value={needsAttention}
-          hint={`${data.documents.pending} document${data.documents.pending === 1 ? "" : "s"} · ${data.questions.pending} question${data.questions.pending === 1 ? "" : "s"}`}
-          tone={needsAttention > 0 ? "warn" : "default"}
-        />
-      </div>
-
       <div className="grid gap-5 lg:grid-cols-2">
         <Panel
           title="Difficulty mix"

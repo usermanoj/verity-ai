@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { hasSupabase } from "@/lib/supabase/config";
 import { getTeacherIngestState } from "@/lib/ingestion/documents";
 import IngestPanel from "@/components/teacher/IngestPanel";
+import TeacherTabs from "@/components/teacher/TeacherTabs";
 
 // Auth-gated: never prerender. The auth helpers read cookies at request
 // time, but bail out early when Supabase env vars are absent — so a build
@@ -54,10 +55,14 @@ function Shell({ children }: { children: React.ReactNode }) {
       </div>
 
       <h1 className="text-3xl font-bold tracking-tight">Add curriculum material</h1>
-      <p className="mt-1 text-[var(--muted)]">
+      <p className="mb-6 mt-1 text-[var(--muted)]">
         Upload one or more .docx, .pdf, .pptx or .txt files — each gets split into cited chunks for you to review
         before students ever see it.
       </p>
+
+      {/* Upload is one of the four teacher screens, not a dead end reached
+          only by a back-link. */}
+      <TeacherTabs />
 
       {children}
     </main>
