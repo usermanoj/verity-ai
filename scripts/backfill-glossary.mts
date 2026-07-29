@@ -21,12 +21,20 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-import { generateGlossary } from "../src/lib/ingestion/glossary";
 
+// .env.local is loaded BEFORE the AI module, and that ordering is the whole
+// reason the import below is dynamic. ESM hoists every static import above
+// module-level code, so lib/ai.ts would evaluate
+//   export const AI_PROVIDER = process.env.AI_PROVIDER || "gateway"
+// while the variable was still unset. The first run of this script died with
+// GatewayAuthenticationError on a project configured for OpenAI, having
+// reported "no terms" for all seven documents.
 for (const line of readFileSync(".env.local", "utf8").split("\n")) {
   const m = line.match(/^([A-Z_]+)=(.*)$/);
   if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
 }
+
+const { generateGlossary } = await import("../src/lib/ingestion/glossary");
 
 const write = process.argv.includes("--write");
 const includeDemo = process.argv.includes("--include-demo");
