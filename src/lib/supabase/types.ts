@@ -16,6 +16,11 @@ export type Database = {
           role: "student" | "teacher" | "hod" | "principal";
           sso_subject: string | null;
           display_name: string | null;
+          // Reading level follows the student, not the browser (0024).
+          esl_level: "advanced" | "intermediate" | "beginner";
+          esl_chinese: boolean;
+          esl_set_by: string | null;
+          esl_set_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -540,6 +545,20 @@ export type Database = {
       };
       teacher_language_review: {
         Args: { p_document_id: string };
+        Returns: unknown;
+      };
+      // Reading level, set by the student or by the teacher who teaches
+      // them (migration 0024).
+      set_my_language: {
+        Args: { p_level: string; p_chinese: boolean };
+        Returns: boolean;
+      };
+      set_student_language: {
+        Args: { p_student_id: string; p_level: string; p_chinese: boolean };
+        Returns: boolean;
+      };
+      teacher_student_language: {
+        Args: Record<string, never>;
         Returns: unknown;
       };
       rotate_class_code: {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import TeacherTabs from "@/components/teacher/TeacherTabs";
 import LanguageReview, { type GlossaryRow, type TranslationRow } from "@/components/teacher/LanguageReview";
+import StudentLanguage, { type StudentRow } from "@/components/teacher/StudentLanguage";
 import { Panel } from "@/components/analytics/charts";
 import { requireRole } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
@@ -24,7 +25,7 @@ export default async function TeacherLanguagePage({
   await requireRole("teacher", "/teacher/language");
   const { doc } = await searchParams;
 
-  const documents = await getDocuments();
+  const [documents, students] = await Promise.all([getDocuments(), getStudents()]);
   const selected = doc && documents.some((d) => d.id === doc) ? doc : documents[0]?.id;
   const review = selected ? await getReview(selected) : null;
 
@@ -44,6 +45,16 @@ export default async function TeacherLanguagePage({
       </p>
 
       <TeacherTabs />
+
+      {/* Reading levels first: it is per student, it applies to every lesson,
+          and it is the one thing on this page a teacher knows the answer to
+          without reading anything. Vocabulary and translations are per
+          document and are reviewed rather than decided. */}
+      <div className="mb-5">
+        <Panel title="Student reading levels" hint="Set how hard the assistant's English is for each of your students.">
+          <StudentLanguage students={students} />
+        </Panel>
+      </div>
 
       {documents.length === 0 ? (
         <Panel title="Nothing to review">
@@ -87,6 +98,21 @@ export default async function TeacherLanguagePage({
       )}
     </main>
   );
+}
+
+async function getStudents(): Promise<StudentRow[]> {
+  if (!hasSupabase()) return [];
+  try {
+    const supabase = await supabaseServer();
+    const { data, error } = await supabase.rpc("teacher_student_language");
+    if (error) {
+      console.error("[teacher/language] could not list students:", error);
+      return [];
+    }
+    return (data as unknown as StudentRow[] | null) ?? [];
+  } catch {
+    return [];
+  }
 }
 
 async function getDocuments(): Promise<{ id: string; title: string }[]> {
