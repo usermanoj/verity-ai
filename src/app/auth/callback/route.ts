@@ -34,6 +34,10 @@ export async function GET(req: NextRequest) {
   // everyone else defaults to student — least privilege. That table is the
   // seam a real "invite teacher" admin UI will later write to, replacing the
   // manual per-teacher SQL promotion the pilot started with.
+  // The role that ends up on their row — from the allowlist for staff, or
+  // whatever they already had. Used for the redirect below.
+  let effectiveRole: string | null = null;
+
   if (hasSupabaseAdmin()) {
     const admin = supabaseAdmin();
 
@@ -84,13 +88,45 @@ export async function GET(req: NextRequest) {
         console.error("[auth/callback] could not provision user", insertError);
         return NextResponse.redirect(`${origin}/login?error=provisioning_failed`);
       }
+      effectiveRole = role;
     } else if (isStaffGrant && existing.role !== role) {
+      effectiveRole = role;
       // Keep a staff member's role in sync with the allowlist on re-login,
       // but never downgrade a user who isn't on the allowlist — their role
       // may have been set deliberately outside it.
       await admin.from("users").update({ role }).eq("id", data.user.id);
+    } else {
+      // The ordinary case, and the one that matters most: someone who already
+      // has a row signing in again. Their existing role is the answer, and
+      // missing this branch would have sent every returning teacher to the
+      // student page.
+      effectiveRole = existing.role;
     }
   }
 
-  return NextResponse.redirect(`${origin}${next}`);
+  // Land where this person belongs.
+  //
+  // "next" carries a real destination when they were sent to sign in from a
+  // gated page — /join?code=…, a lesson URL — and that always wins. But a
+  // plain sign-in from the landing page used to return them to the landing
+  // page: signed in, and still looking at marketing copy with no indication
+  // of where to go. The system knows their role; it should use it.
+  const destination = next === "/" ? homeForRole(effectiveRole) : next;
+  return NextResponse.redirect(`${origin}${destination}`);
+}
+
+function homeForRole(role: string | null): string {
+  switch (role) {
+    case "teacher":
+      return "/teacher";
+    case "hod":
+      return "/hod";
+    case "principal":
+      return "/principal";
+    // Students, and anyone whose row could not be read: /subjects is the
+    // student home and is safe for everyone — it shows only what the viewer
+    // is scoped to see.
+    default:
+      return "/subjects";
+  }
 }
