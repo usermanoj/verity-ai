@@ -165,9 +165,32 @@ async function seed(schoolId: string) {
 /* ---------------------------------------------------------------- remove */
 
 async function remove(schoolId: string) {
-  // Users are the anchor: documents, enrolments, conversations and attempts
-  // all cascade from them, so deleting the auth user removes the rest without
-  // this script needing to know the shape of every table.
+  // Documents FIRST, and by name.
+  //
+  // The original order assumed everything cascades from the user. Enrolments,
+  // conversations and attempts do. Documents do NOT: corpus_documents
+  // .uploaded_by is ON DELETE SET NULL, deliberately — a teacher leaving the
+  // school must not delete the curriculum. So deleting the demo users left
+  // nineteen "Demo — …" decks behind with a null uploader, listed in every
+  // class, un-attributable and impossible to remove from the UI.
+  //
+  // Deleting them by name cascades their chunks, glossary, generated
+  // questions and translation memory.
+  const { data: demoDocs } = await db
+    .from("corpus_documents")
+    .select("id, source_file")
+    .like("source_file", `${DOC_PREFIX}%`);
+  if (demoDocs?.length) {
+    const { error } = await db
+      .from("corpus_documents")
+      .delete()
+      .in("id", demoDocs.map((d) => d.id));
+    if (error) console.error("Could not delete demo documents:", error.message);
+    else console.log(`Deleted ${demoDocs.length} demo documents.`);
+  }
+
+  // Users are the anchor for the rest: enrolments, conversations and attempts
+  // all cascade from them.
   const { data: demoUsers } = await db
     .from("users")
     .select("id, display_name")
