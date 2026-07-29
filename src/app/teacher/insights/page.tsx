@@ -3,7 +3,8 @@ import TeacherAnalyticsView from "@/components/analytics/TeacherAnalyticsView";
 import TeacherTabs from "@/components/teacher/TeacherTabs";
 import { getTeacherAnalytics, getTeacherLearning } from "@/lib/analytics";
 import StudentsView from "@/components/analytics/StudentsView";
-import { getStudentProgress } from "@/lib/analytics";
+import { getStudentProgress, getQuestionOutcomes, getAskedAbout } from "@/lib/analytics";
+import { ConceptFailurePanel, AskedAboutPanel } from "@/components/analytics/ReteachPanels";
 import { requireRole } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 
@@ -17,10 +18,12 @@ export const dynamic = "force-dynamic";
 
 export default async function TeacherInsightsPage() {
   await requireRole("teacher", "/teacher/insights");
-  const [data, learning, progress] = await Promise.all([
+  const [data, learning, progress, outcomes, asked] = await Promise.all([
     getTeacherAnalytics(),
     getTeacherLearning(),
     getStudentProgress(),
+    getQuestionOutcomes(),
+    getAskedAbout(),
   ]);
 
   return (
@@ -42,8 +45,13 @@ export default async function TeacherInsightsPage() {
       {/* Students first. Coverage and difficulty describe the material; this
           describes the children, and it is the only part of this page a
           teacher can act on the same morning. */}
-      <div className="mb-5">
+      {/* Three questions, in the order a teacher asks them: who needs me,
+          what did they not understand, what are they confused by. Coverage
+          and difficulty describe the material and come after. */}
+      <div className="mb-5 space-y-5">
         <StudentsView students={progress.students} now={progress.now} />
+        <ConceptFailurePanel outcomes={outcomes} />
+        <AskedAboutPanel rows={asked} />
       </div>
 
       {data ? (

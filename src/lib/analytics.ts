@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import type { StudentProgress } from "@/lib/student-progress";
+import type { AskedAbout, QuestionOutcome } from "@/lib/concept-failure";
 import { hasSupabase } from "@/lib/supabase/config";
 
 // Reads the analytics RPCs. One call per dashboard, because a dashboard that
@@ -110,6 +111,36 @@ export async function getSchoolLanguage(): Promise<SchoolLanguage | null> {
 // `now` is stamped here rather than in the component: every row then compares
 // against the same moment, and the render stays pure — calling Date.now()
 // during render is what the compiler forbids.
+// What the class is getting wrong, and what they keep asking about.
+//
+// Both return [] rather than null on failure: an empty panel says "nothing
+// yet", which is the truthful reading when a class has not started, and a
+// dashboard that shows an error where a teacher expects a list is worse than
+// one that shows the list is empty. The reason is logged either way.
+export async function getQuestionOutcomes(): Promise<QuestionOutcome[]> {
+  return rpcList<QuestionOutcome>("teacher_question_outcomes");
+}
+
+export async function getAskedAbout(): Promise<AskedAbout[]> {
+  return rpcList<AskedAbout>("teacher_asked_about");
+}
+
+async function rpcList<T>(fn: "teacher_question_outcomes" | "teacher_asked_about"): Promise<T[]> {
+  if (!hasSupabase()) return [];
+  try {
+    const supabase = await supabaseServer();
+    const { data, error } = await supabase.rpc(fn);
+    if (error) {
+      console.error(`[analytics] ${fn} failed:`, error);
+      return [];
+    }
+    return (data as unknown as T[] | null) ?? [];
+  } catch (err) {
+    console.error(`[analytics] ${fn} threw:`, err);
+    return [];
+  }
+}
+
 export async function getStudentProgress(): Promise<{ students: StudentProgress[]; now: number }> {
   const now = Date.now();
   if (!hasSupabase()) return { students: [], now };

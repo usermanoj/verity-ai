@@ -1,4 +1,4 @@
-import { Locked, Panel, Stat, StackedBar, Trend } from "./charts";
+import { Locked, Panel, Stat, StackedBar } from "./charts";
 import { TeacherLearningPanels } from "./LearningPanels";
 import type { TeacherAnalytics, TeacherLearning } from "@/lib/analytics";
 
@@ -24,6 +24,14 @@ export function TeacherStats({ data }: { data: TeacherAnalytics }) {
   );
 }
 
+// What remains here is about the MATERIAL — coverage and balance. The three
+// panels above it on the page are about the children.
+//
+// Two panels left when the students' own views arrived. "Material added, last
+// twelve weeks" was a productivity chart about the teacher: it helped nobody
+// teach and read faintly like surveillance. "Classes with no material" now
+// sits on the Classes tab beside the code a teacher is about to hand out,
+// which is the moment it can be acted on rather than merely noted.
 export default function TeacherAnalyticsView({
   data,
   learning,
@@ -31,7 +39,6 @@ export default function TeacherAnalyticsView({
   data: TeacherAnalytics;
   learning: TeacherLearning | null;
 }) {
-  const sectionsWithout = data.sections.filter((s) => !s.hasMaterial);
 
   return (
     <div className="space-y-5">
@@ -55,23 +62,11 @@ export default function TeacherAnalyticsView({
         </Panel>
       </div>
 
-      {/* The two gap panels are the point of this page: they name specific
-          work rather than reporting a percentage nobody can act on. */}
-      {sectionsWithout.length > 0 && (
-        <Panel title="Classes with no material" hint="These sections have nothing approved — their students see an empty subject.">
-          <ul className="space-y-1.5 text-sm">
-            {sectionsWithout.map((s) => (
-              <li key={`${s.subject}-${s.grade}-${s.section}`} className="flex items-center gap-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-[var(--warn)]" />
-                <span className="text-[var(--text)]/85">
-                  {s.grade} {s.subject} · section {s.section}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      )}
-
+      {/* Named work rather than a percentage nobody can act on.
+          Guarded on its OWN list: removing the sibling panel left this one
+          keyed to whether any section lacked MATERIAL, which is a different
+          question — a teacher whose sections were all stocked would never
+          have seen their unpractisable topics. */}
       {data.topicsWithoutQuestions.length > 0 && (
         <Panel
           title="Topics students can read but not practise"
@@ -88,9 +83,6 @@ export default function TeacherAnalyticsView({
         </Panel>
       )}
 
-      <Panel title="Material added" hint="Last twelve weeks.">
-        <Trend points={data.weekly} />
-      </Panel>
 
       {/* Real once students have answered something. The locked state is kept
           rather than deleted: a school with no student activity yet should be
