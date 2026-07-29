@@ -3,7 +3,14 @@ import { streamText } from "ai";
 import { AI_PROVIDER, aiModel, gatewayFailover, GATEWAY_FALLBACK_MODELS, hasApiKey, cachedSystem } from "@/lib/ai";
 import { hasLangfuse } from "@/lib/observability";
 import { logEvent } from "@/lib/events";
-import { buildSystemPrompt, fallbackReply, replyBudget, type Intent, type EslLevel } from "@/lib/tutor";
+import {
+  buildSystemPrompt,
+  fallbackReply,
+  replyBudget,
+  splitLegacyLevel,
+  type Intent,
+  type LegacyEslLevel,
+} from "@/lib/tutor";
 import { contentRepo } from "@/lib/content-repo";
 import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
@@ -15,7 +22,10 @@ export const runtime = "nodejs";
 type HistoryTurn = { role: "user" | "assistant"; content: string };
 
 const VALID_INTENTS: Intent[] = ["explain", "translate", "example", "askme", "check"];
-const VALID_LEVELS: EslLevel[] = ["advanced", "intermediate", "beginner", "beginner_zh"];
+// "beginner_zh" is still accepted: it is what a browser stored before reading
+// level and Chinese support became separate controls, and rejecting it would
+// error a student mid-lesson over a type change of ours.
+const VALID_LEVELS: LegacyEslLevel[] = ["advanced", "intermediate", "beginner", "beginner_zh"];
 const MAX_TEXT_LEN = 2000;
 const MAX_HISTORY_TURNS = 40;
 
@@ -38,7 +48,8 @@ export async function POST(req: NextRequest) {
     topicId?: string;
     intent: Intent;
     question: string;
-    level: EslLevel;
+    level: LegacyEslLevel;
+    chinese?: boolean;
     answer?: string;
     turn?: number;
     history?: HistoryTurn[];
@@ -67,6 +78,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { topicId, intent, question, level, answer, turn, history, contextChunkId } = body;
+  // Two axes now. A legacy "beginner_zh" carries its own answer to both; a
+  // modern client sends them separately.
+  const legacy = splitLegacyLevel(level ?? "intermediate");
+  const eslLevel = legacy.level;
+  const wantsChinese = legacy.chinese || body.chinese === true;
   const turnNum = turn ?? 0;
   const topic = topicId ?? "moments";
 
@@ -114,10 +130,11 @@ export async function POST(req: NextRequest) {
   const studentReplied = typeof question === "string" && question.trim().length > 0;
   const system = await buildSystemPrompt(
     topic,
-    level ?? "intermediate",
+    eslLevel,
     intent ?? "explain",
     turnNum,
     studentReplied,
+    wantsChinese,
   );
 
   let userText: string;

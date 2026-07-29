@@ -2,7 +2,23 @@ import { contentRepo } from "@/lib/content-repo";
 import type { CorpusChunk } from "@/data/corpus";
 
 export type Intent = "explain" | "translate" | "example" | "askme" | "check";
-export type EslLevel = "advanced" | "intermediate" | "beginner" | "beginner_zh";
+// How hard the English may be. Three rungs of ONE ladder.
+//
+// This used to carry a fourth value, "beginner_zh", which folded a second
+// question — should there be Chinese? — into the same list. The cost was that
+// a strong reader new to English could not ask for full English WITH 中文, a
+// combination that describes a real and common student.
+export type EslLevel = "advanced" | "intermediate" | "beginner";
+
+// The legacy value still arrives from a browser that stored it before the
+// split, and from any client not yet updated. Accepted and translated rather
+// than rejected: a student mid-lesson should not get an error because we
+// changed a type.
+export type LegacyEslLevel = EslLevel | "beginner_zh";
+
+export function splitLegacyLevel(value: LegacyEslLevel): { level: EslLevel; chinese: boolean } {
+  return value === "beginner_zh" ? { level: "beginner", chinese: true } : { level: value, chinese: false };
+}
 
 // Vectorless / long-context RAG: for a small curated per-topic corpus we inject
 // the whole approved set and force the model to cite. No embeddings, no drift.
@@ -22,9 +38,14 @@ const LEVEL_GUIDE: Record<EslLevel, string> = {
     "The student is an intermediate ESL learner. Use simpler English, short sentences, and define hard words in brackets.",
   beginner:
     "The student is a beginner ESL learner. Use very simple English, very short sentences, and everyday words. Explain every technical term.",
-  beginner_zh:
-    "The student is a beginner ESL learner whose first language is Chinese. Use very simple English, then give a short Simplified Chinese (中文) gloss in brackets after key sentences and technical terms.",
 };
+
+// The second axis, and now independent of the first: a student may want
+// Chinese support at any reading level.
+const CHINESE_GUIDE =
+  " The student's first language is Chinese. After key sentences and after every technical term, add a short " +
+  "Simplified Chinese (中文) gloss in brackets. Do NOT translate the whole reply — the English is what they are here " +
+  "to read, and the Chinese is there to unblock them.";
 
 const INTENT_GUIDE: Record<Intent, string> = {
   explain:
@@ -144,6 +165,7 @@ export async function buildSystemPrompt(
   intent: Intent,
   turn = 0,
   studentReplied = false,
+  chinese = false,
 ): Promise<string> {
   const chunks = await corpusForTopic(topicId);
   const meta = (await contentRepo.getTopic(topicId)) ?? (await contentRepo.getTopic("moments"))!;
@@ -159,7 +181,7 @@ ABSOLUTE RULES — follow every time:
 2. If the question cannot be answered from the approved material, say so briefly and steer the student back to the topic. Do NOT use outside/internet knowledge, and do NOT guess.
 3. Do NOT write a citation or "Based on:" line. Never name the source file, page or section number. The material is already in front of the student.
 4. NEVER complete a whole assignment or give the final numeric answer to a task the student must do. Guide, hint, and ask questions instead (academic integrity).
-5. Be encouraging and concise. ${LEVEL_GUIDE[level]}${progressNote}
+5. Be encouraging and concise. ${LEVEL_GUIDE[level]}${chinese ? CHINESE_GUIDE : ""}${progressNote}
 
 TASK MODE: ${intentGuide(intent, turn, studentReplied)}${lengthRule(intent, turn)}
 
