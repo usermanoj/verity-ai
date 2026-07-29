@@ -215,6 +215,10 @@ export type Database = {
           // to be silently dropped.
           class_id: string | null;
           topic_id: string;
+          // Snapshot of the lesson's name and a real FK where one is possible
+          // (0026), so history stays readable after a document is replaced.
+          topic_title: string | null;
+          document_id: string | null;
           started_at: string;
         };
         Insert: {
@@ -222,6 +226,8 @@ export type Database = {
           student_id: string;
           class_id?: string | null;
           topic_id: string;
+          topic_title?: string | null;
+          document_id?: string | null;
           started_at?: string;
         };
         Update: {
@@ -229,6 +235,8 @@ export type Database = {
           student_id?: string;
           class_id?: string | null;
           topic_id?: string;
+          topic_title?: string | null;
+          document_id?: string | null;
           started_at?: string;
         };
         Relationships: [];

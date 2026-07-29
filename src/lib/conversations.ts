@@ -1,4 +1,5 @@
 import { supabaseAdmin, hasSupabaseAdmin } from "@/lib/supabase/admin";
+import { contentRepo } from "@/lib/content-repo";
 import type { AppUser } from "@/lib/auth";
 import { isDemoTopic } from "@/lib/access";
 
@@ -42,9 +43,25 @@ export async function conversationFor(user: AppUser | null, topicId: string): Pr
 
     if (existing) return existing.id;
 
+    // The lesson's name is snapshotted onto the conversation, not just its
+    // id. topic_id has no foreign key — it holds a uuid for uploaded material
+    // and a slug for the demo topics — so re-uploading a deck used to leave
+    // every conversation about it pointing at nothing, and a teacher reading
+    // the transcript could not tell which lesson it was. A record of what a
+    // child did must not decay because the teacher tidied up their uploads.
+    const topic = await contentRepo.getTopic(topicId).catch(() => undefined);
+    const isDocumentId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(topicId);
+
     const { data: created } = await admin
       .from("conversations")
-      .insert({ student_id: user.id, topic_id: topicId, class_id: await classFor(user.id, topicId) })
+      .insert({
+        student_id: user.id,
+        topic_id: topicId,
+        class_id: await classFor(user.id, topicId),
+        // Null for the demo topics, whose ids are slugs rather than rows.
+        document_id: isDocumentId ? topicId : null,
+        topic_title: topic?.title ?? null,
+      })
       .select("id")
       .maybeSingle();
 

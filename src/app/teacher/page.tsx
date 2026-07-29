@@ -2,6 +2,7 @@ import Link from "next/link";
 import { TeacherStats } from "@/components/analytics/TeacherAnalyticsView";
 import TeacherTabs from "@/components/teacher/TeacherTabs";
 import { getTeacherAnalytics } from "@/lib/analytics";
+import { getClassCodes } from "@/lib/teacher-classes";
 import MaterialList, { relativeTime, type MaterialRow } from "@/components/teacher/MaterialList";
 import { Panel } from "@/components/analytics/charts";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -17,7 +18,16 @@ export const dynamic = "force-dynamic";
 
 export default async function TeacherPage() {
   await requireRole("teacher", "/teacher");
-  const [data, material] = await Promise.all([getTeacherAnalytics(), getMaterial()]);
+  const [data, material, codes] = await Promise.all([
+    getTeacherAnalytics(),
+    getMaterial(),
+    getClassCodes(),
+  ]);
+
+  // Sections a student has joined that have nothing to read. The student sees
+  // an empty page they cannot diagnose, and until now nothing told the
+  // teacher the two halves had not met.
+  const stranded = codes.filter((c) => c.hasMaterial === false && c.students > 0);
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
@@ -38,6 +48,21 @@ export default async function TeacherPage() {
       <TeacherTabs />
 
       <div className="space-y-5">
+        {stranded.length > 0 && (
+          <div className="rounded-2xl border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.08)] px-4 py-3 text-sm">
+            <strong>
+              {stranded.reduce((n, c) => n + c.students, 0)} student
+              {stranded.reduce((n, c) => n + c.students, 0) === 1 ? "" : "s"} can&apos;t see any material.
+            </strong>{" "}
+            {stranded.map((c) => `${c.grade} ${c.subject} · ${c.section}`).join(", ")} —{" "}
+            {stranded.length === 1 ? "this section has" : "these sections have"} students joined but nothing approved
+            reaching them.{" "}
+            <Link href="/teacher/ingest" className="text-[var(--brand2)] hover:underline">
+              Upload material →
+            </Link>
+          </div>
+        )}
+
         {data && <TeacherStats data={data} />}
 
         <Panel title="Your material" hint="Newest first — what you have uploaded, where it goes, and whether students can see it yet.">
