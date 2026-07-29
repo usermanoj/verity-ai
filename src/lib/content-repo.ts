@@ -253,7 +253,10 @@ class PostgresContentRepository implements ContentRepository {
     const { data, error } = await supabaseAdmin()
       .from("corpus_glossary")
       .select("term, en, zh")
-      .eq("document_id", topicId);
+      .eq("document_id", topicId)
+      // A teacher who hides a term has judged it wrong or unhelpful; it must
+      // stop reaching students, not merely be marked in the review screen.
+      .eq("hidden", false);
     if (error || !data?.length) {
       // Falling back to the curated list would put physics tooltips on a
       // geography lesson. Better nothing than wrong.

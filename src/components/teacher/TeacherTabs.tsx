@@ -16,6 +16,7 @@ const TABS = [
   { href: "/teacher", label: "Overview", icon: "📋", blurb: "What's live and what needs you" },
   { href: "/teacher/ingest", label: "Upload & review", icon: "📤", blurb: "Add material, approve chunks" },
   { href: "/teacher/classes", label: "Classes", icon: "🔑", blurb: "Join codes and QR" },
+  { href: "/teacher/language", label: "Language", icon: "🈶", blurb: "Vocabulary and translations, and your corrections" },
   { href: "/teacher/insights", label: "Insights", icon: "📊", blurb: "Coverage, difficulty, progress" },
 ];
 

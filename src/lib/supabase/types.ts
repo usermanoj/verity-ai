@@ -389,6 +389,7 @@ export type Database = {
       // ESL vocabulary for one document, extracted from its own text at
       // ingestion (migration 0021). Inherits the document's approval: a
       // student cannot open the lesson until the teacher has approved it.
+      // Editable by the uploading teacher (migration 0023).
       corpus_glossary: {
         Row: {
           id: string;
@@ -396,6 +397,9 @@ export type Database = {
           term: string;
           en: string;
           zh: string;
+          edited_by: string | null;
+          edited_at: string | null;
+          hidden: boolean;
           created_at: string;
         };
         Insert: {
@@ -413,6 +417,45 @@ export type Database = {
           en?: string;
           zh?: string;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      translation_memory: {
+        Row: {
+          id: string;
+          document_id: string | null;
+          source_hash: string;
+          source_text: string;
+          target_lang: string;
+          translation: string;
+          origin: "model" | "teacher";
+          edited_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          document_id?: string | null;
+          source_hash: string;
+          source_text: string;
+          target_lang?: string;
+          translation: string;
+          origin?: "model" | "teacher";
+          edited_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          document_id?: string | null;
+          source_hash?: string;
+          source_text?: string;
+          target_lang?: string;
+          translation?: string;
+          origin?: "model" | "teacher";
+          edited_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -478,6 +521,25 @@ export type Database = {
       // scoped to the caller's own uploads.
       teacher_material_list: {
         Args: { p_limit?: number };
+        Returns: unknown;
+      };
+      // Teacher corrections for generated Chinese (migration 0023).
+      save_glossary_edit: {
+        Args: { p_id: string; p_en: string; p_zh: string; p_hidden: boolean };
+        Returns: boolean;
+      };
+      save_translation_correction: {
+        Args: {
+          p_document_id: string;
+          p_source_hash: string;
+          p_source_text: string;
+          p_target_lang: string;
+          p_translation: string;
+        };
+        Returns: boolean;
+      };
+      teacher_language_review: {
+        Args: { p_document_id: string };
         Returns: unknown;
       };
       rotate_class_code: {
