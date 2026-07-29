@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { PRESSABLE } from "@/lib/ui";
 
 export type ClassCode = {
@@ -32,7 +33,21 @@ export default function ClassCodes({
   // without pulling an encoder into the browser bundle.
   qrFor?: Record<string, React.ReactNode>;
 }) {
+  const router = useRouter();
   const [rows, setRows] = useState(initial);
+
+  // Adopt the server's list when router.refresh() delivers a new one —
+  // otherwise the optimistic state from before the refresh wins and the new
+  // QR never appears.
+  //
+  // Adjusted during render rather than in an effect: this is React's
+  // documented pattern for reacting to a changed prop, and it avoids the
+  // extra commit (and the lint rule) that setState-in-an-effect brings.
+  const [lastServerRows, setLastServerRows] = useState(initial);
+  if (lastServerRows !== initial) {
+    setLastServerRows(initial);
+    setRows(initial);
+  }
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +95,14 @@ export default function ClassCodes({
         return;
       }
       setRows((prev) => prev.map((r) => (r.classId === classId ? { ...r, code: data.code! } : r)));
+      // The code appears instantly from client state, but the QR does not:
+      // it is rendered on the SERVER (JoinQr needs the request origin and the
+      // encoder, which stays out of the browser bundle), so a class that had
+      // no code when this page rendered has no QR node to show. Creating a
+      // code therefore produced a code with no "Show QR" beside it until the
+      // teacher happened to reload. Refreshing re-runs the server component
+      // and fills it in.
+      router.refresh();
     } catch {
       setError("Couldn't create a code — please try again.");
     } finally {

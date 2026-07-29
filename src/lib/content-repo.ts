@@ -137,7 +137,7 @@ class PostgresContentRepository implements ContentRepository {
   private async approvedDocuments(): Promise<DocumentRow[]> {
     const { data, error } = await supabaseAdmin()
       .from("corpus_documents")
-      .select("id, source_file, corpus_document_sections(classes(courses(subject, grade)))")
+      .select("id, source_file, created_at, corpus_document_sections(classes(courses(subject, grade)))")
       .eq("status", "approved")
       // Superseded documents stay in the database as history for the teacher,
       // but a student must never see last year's deck listed beside this
@@ -163,7 +163,7 @@ class PostgresContentRepository implements ContentRepository {
 
     const { data } = await supabaseAdmin()
       .from("corpus_documents")
-      .select("id, source_file, corpus_document_sections(classes(courses(subject, grade)))")
+      .select("id, source_file, created_at, corpus_document_sections(classes(courses(subject, grade)))")
       .eq("id", id)
       .eq("status", "approved")
       // A direct link to a superseded document is a link to material the
@@ -335,6 +335,7 @@ class PostgresContentRepository implements ContentRepository {
 type DocumentRow = {
   id: string;
   source_file: string;
+  created_at?: string;
   corpus_document_sections?: { classes?: { courses?: { subject: string; grade: string } | null } | null }[];
 };
 
@@ -348,6 +349,7 @@ function toTopicMeta(doc: DocumentRow): TopicMeta {
     // extension rather than inventing a title.
     title: doc.source_file.replace(/\.[^.]+$/, ""),
     objective: "",
+    addedAt: doc.created_at,
   };
 }
 

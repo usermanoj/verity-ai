@@ -16,12 +16,28 @@ const SUBJECTS = [
   { id: "english", name: "English", icon: "📖", color: "#f472b6", topics: 0, ready: false, blurb: "Reading · Grammar · Essays" },
 ];
 
-// href is only set for tasks with a real, built topic page — everything else
-// shows "Coming soon" rather than linking to the wrong content.
-const TASKS: { subject: string; title: string; due: string; status: string; href?: string }[] = [
-  { subject: "Physics", title: "Moments of a Force", due: "This week", status: "In progress", href: "/topics/moments" },
-  { subject: "Physics", title: "Distance–Time Graphs", due: "Next week", status: "Not started", href: "/topics/distance-time" },
-];
+// When the teacher added a lesson. Relative, because "3 days ago" is what a
+// student can act on; the exact date is in the title attribute for anyone who
+// wants it.
+// Stamped in here rather than in the component body: every card then measures
+// against the same instant, and the render stays pure — calling Date.now()
+// during render is exactly what the compiler forbids.
+async function addedLabels(topics: { id: string; addedAt?: string }[]): Promise<Record<string, string>> {
+  const now = Date.now();
+  return Object.fromEntries(topics.map((t) => [t.id, addedAgo(t.addedAt, now)]));
+}
+
+function addedAgo(iso: string | undefined, now: number): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const days = Math.floor((now - then) / 86_400_000);
+  if (days <= 0) return "added today";
+  if (days === 1) return "added yesterday";
+  if (days < 7) return `added ${days} days ago`;
+  const weeks = Math.floor(days / 7);
+  return weeks === 1 ? "added last week" : `added ${weeks} weeks ago`;
+}
 
 export default async function Subjects() {
   // Signed in, and then scoped. This page listed every approved document in
@@ -32,9 +48,13 @@ export default async function Subjects() {
   const allTopics = await contentRepo.getTopics();
   // The two seeded demo topics are filtered out — they have their own
   // hand-built pages and are surfaced in the tasks table below.
-  const uploaded = Object.values(allTopics).filter(
-    (t) => !(t.id in DEMO_TOPICS) && canSee(visibility, t.id),
-  );
+  const uploaded = Object.values(allTopics)
+    .filter((t) => !(t.id in DEMO_TOPICS) && canSee(visibility, t.id))
+    // Newest first: what a teacher added most recently is what a student has
+    // most likely been told to read.
+    .sort((a, b) => (b.addedAt ?? "").localeCompare(a.addedAt ?? ""));
+
+  const added = await addedLabels(uploaded);
 
   // A student in no classes can see nothing, so the page has to offer the way
   // in rather than simply being empty. Staff are unrestricted viewers and
@@ -103,6 +123,11 @@ export default async function Subjects() {
                   <div className="mt-0.5 text-xs text-[var(--muted)]">
                     {[t.subject, t.grade].filter(Boolean).join(" · ") || "Approved material"}
                   </div>
+                  {added[t.id] && (
+                    <div className="mt-1 text-xs text-[var(--muted)] opacity-80" title={t.addedAt}>
+                      {added[t.id]}
+                    </div>
+                  )}
                   <div className="mt-3 text-xs text-[var(--brand2)]">open →</div>
                 </div>
               </Link>
@@ -111,41 +136,16 @@ export default async function Subjects() {
         </section>
       )}
 
-      <section className="mt-10">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-widest text-[var(--muted)]">This week&apos;s tasks</h2>
-        <div className="glass overflow-hidden rounded-3xl">
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-[var(--muted)]">
-              <tr className="border-b border-[var(--border)]">
-                <th className="px-5 py-3">Subject</th>
-                <th className="px-5 py-3">Task</th>
-                <th className="px-5 py-3">Due</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {TASKS.map((t, i) => (
-                <tr key={i} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface)]">
-                  <td className="px-5 py-3">{t.subject}</td>
-                  <td className="px-5 py-3 font-medium">{t.title}</td>
-                  <td className="px-5 py-3 text-[var(--muted)]">{t.due}</td>
-                  <td className="px-5 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${t.status === "In progress" ? "bg-[rgba(99,102,241,0.2)] text-[var(--brand2)]" : "bg-white/10 text-[var(--muted)]"}`}>{t.status}</span>
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    {t.href ? (
-                      <Link href={t.href} className="text-[var(--brand2)] hover:underline">Open →</Link>
-                    ) : (
-                      <span className="text-[var(--muted)]">Not built yet</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* "This week's tasks" used to live here: a hardcoded two-row table
+          claiming Moments of a Force was "In progress" and due "This week".
+          None of it was true for any student — there is no assignments model,
+          so there was no due date to show and no progress to report. A
+          dashboard that invents a deadline is worse than one that omits it,
+          because a student may believe it.
+
+          What IS real is above: the material their teacher has given them,
+          and when. Due dates need teachers to be able to set them, which is
+          a feature, not a column. */}
     </main>
   );
 }
