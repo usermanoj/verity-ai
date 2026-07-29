@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     };
 
     const supabase = await supabaseServer();
-    await supabase.from("practice_attempts").insert({
+    const { error } = await supabase.from("practice_attempts").insert({
       student_id: user.id,
       question_id: questionId,
       // The constrained reference, set only for generated questions. The two
@@ -51,8 +51,20 @@ export async function POST(req: NextRequest) {
       graded_by: "rule",
     });
 
+    // The insert's result used to be discarded, so this route answered
+    // "logged: true" whether or not anything was written. After an
+    // end-to-end test that produced zero attempts, there was no way to tell
+    // whether the student never pressed Check or every write had been
+    // rejected — the two look identical from here, and that is precisely the
+    // failure mode this codebase keeps rediscovering.
+    if (error) {
+      console.error("[api/practice/attempt] insert rejected:", error);
+      return NextResponse.json({ logged: false, detail: error.message });
+    }
+
     return NextResponse.json({ logged: true });
-  } catch {
+  } catch (err) {
+    console.error("[api/practice/attempt] threw:", err);
     return NextResponse.json({ logged: false });
   }
 }
