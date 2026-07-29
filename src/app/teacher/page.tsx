@@ -43,12 +43,12 @@ export default async function TeacherPage() {
       </p>
 
       <div className="mt-8 space-y-5">
-        <Panel title="Class codes" hint="Students sign in with their school account, then enter a code once to join a section.">
-          <ClassCodes initial={codes} qrFor={await joinQrs(codes)} />
-        </Panel>
-
         <Panel title="Your material" hint="Newest first — what you have uploaded, where it goes, and whether students can see it yet.">
           <MaterialList rows={material} />
+        </Panel>
+
+        <Panel title="Class codes" hint="Students sign in with their school account, then enter a code once to join a section.">
+          <ClassCodes initial={codes} qrFor={await joinQrs(codes)} />
         </Panel>
 
         {data ? (
