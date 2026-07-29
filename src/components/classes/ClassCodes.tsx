@@ -11,6 +11,10 @@ export type ClassCode = {
   academicYear: string;
   code: string | null;
   students: number;
+  // False when no approved, non-superseded document reaches this section —
+  // its students open the app to an empty page. Optional so an older cached
+  // response renders without a warning rather than a wrong one.
+  hasMaterial?: boolean;
 };
 
 // The teacher's half of enrolment: one code per section, read out once.
@@ -111,8 +115,26 @@ export default function ClassCodes({
           className="flex flex-wrap items-center gap-4 rounded-2xl border border-[var(--border)] p-4"
         >
           <div className="min-w-0">
-            <div className="font-medium">
-              {row.grade} {row.subject} · {row.section}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">
+                {row.grade} {row.subject} · {row.section}
+              </span>
+              {/* A section with students and nothing to read is invisible
+                  everywhere else: the student gets an empty page they cannot
+                  diagnose, and the teacher gets a join code that looks like it
+                  worked. It is loudest here, because this is where the code is
+                  handed out. */}
+              {row.hasMaterial === false && row.students > 0 && (
+                <span
+                  title="These students have joined but no approved document reaches this section — they open the app to an empty page."
+                  className="rounded-full border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.12)] px-2 py-0.5 text-[11px] text-[#fcd34d]"
+                >
+                  ⚠ no material — students see nothing
+                </span>
+              )}
+              {row.hasMaterial === false && row.students === 0 && (
+                <span className="text-[11px] text-[var(--muted)]">no material yet</span>
+              )}
             </div>
             <div className="text-xs text-[var(--muted)]">
               {row.academicYear} · {row.students} student{row.students === 1 ? "" : "s"} joined
