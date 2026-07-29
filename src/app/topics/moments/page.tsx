@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import MomentsLever, { type LeverState } from "@/components/physics/MomentsLever";
 import AiTutorPanel from "@/components/tutor/AiTutorPanel";
 import ReadingText from "@/components/reading/ReadingText";
+import { GLOSSARY } from "@/data/corpus";
 import PracticeZone from "@/components/practice/PracticeZone";
 import { CORPUS, TOPICS } from "@/data/corpus";
 import { MOMENTS_BANK } from "@/data/practice-banks";
@@ -48,7 +49,7 @@ export default function MomentsTopic() {
               {learnChunks.map((c) => (
                 <div key={c.id}>
                   <h3 className="mb-1 text-sm font-semibold text-[var(--brand2)]">{c.heading}</h3>
-                  <ReadingText text={c.text} />
+                  <ReadingText text={c.text} glossary={GLOSSARY} />
                   <div className="mt-1 text-xs text-[var(--muted)]">📖 {c.source}</div>
                 </div>
               ))}

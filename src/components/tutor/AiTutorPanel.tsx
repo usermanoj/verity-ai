@@ -17,6 +17,7 @@ type Msg = {
   intent?: Intent;        // which intent produced this AI reply (drives turn-reset logic)
   chunkId?: string;       // which approved-corpus chunk this AI reply was grounded in (demo mode)
   isTranslation?: boolean; // true for a Translate result — never re-translate a translation
+  translationOf?: string;  // id of the message this translates, so it is only translated once
   streaming?: boolean;     // true while text is still arriving
 };
 
@@ -247,7 +248,9 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
   const canCheck = messages.some((m) => m.role === "ai" && (m.intent === "example" || m.intent === "askme"));
   // Anything real to translate — the opening greeting has no intent, and a
   // translation of a translation isn't meaningful.
-  const canTranslate = messages.some((m) => m.role === "ai" && m.intent !== undefined && !m.isTranslation);
+  const lastRealReply = [...messages].reverse().find((m) => m.role === "ai" && m.intent !== undefined && !m.isTranslation);
+  const alreadyTranslated = messages.some((m) => m.translationOf && m.translationOf === lastRealReply?.id);
+  const canTranslate = Boolean(lastRealReply) && !alreadyTranslated;
 
 
   // Speech is a browser-level singleton, not part of this component's tree —
@@ -337,7 +340,12 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
         text:
           intent === "check"
             ? `Check my answer: ${ans || "(my working)"}`
-            : `${label}: ${followUpLabel(q, turn, question.trim(), lastAiTurn?.text)}`,
+            : intent === "translate"
+              // Translate acts on the previous reply, not on the box. Echoing
+              // the topic name here claimed it was translating a phrase the
+              // student never asked about.
+              ? "Translate this answer into 中文"
+              : `${label}: ${followUpLabel(q, turn, question.trim(), lastAiTurn?.text)}`,
         raw: userRaw,
       },
     ]);
@@ -354,13 +362,23 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
         const res = await fetch("/api/translate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: sourceText, sourceId }),
+          body: JSON.stringify({ text: sourceText, sourceId, topicId }),
         });
         const data = await res.json();
         const { body, cite } = splitCite(data.translation || "");
         setMessages((m) => [
           ...m,
-          { id: nextId(), role: "ai", text: body, raw: body, cite, demo: data.demo, isTranslation: true, chunkId: sourceId },
+          {
+            id: nextId(),
+            role: "ai",
+            text: body,
+            raw: body,
+            cite,
+            demo: data.demo,
+            isTranslation: true,
+            chunkId: sourceId,
+            translationOf: lastAi?.id,
+          },
         ]);
         return;
       }
@@ -544,7 +562,9 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
             const title = gated
               ? b.intent === "check"
                 ? 'Tap "Give Example" first so I know what problem to check'
-                : "Ask to Explain or Give Example first, then Translate it"
+                : alreadyTranslated
+                  ? "This answer is already translated above"
+                  : "Ask to Explain or Give Example first, then Translate it"
               : b.hint;
             return (
               <button
@@ -563,7 +583,10 @@ export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string;
         {(!canCheck || !canTranslate) && (
           <div className="mt-2 text-[10px] text-[var(--muted)]">
             {!canCheck && "Check My Answer unlocks after Give Example (or Explain reaches a worked example). "}
-            {!canTranslate && "Translate unlocks after your first Explain or Example."}
+            {!canTranslate &&
+              (alreadyTranslated
+                ? "Already translated — ask something new to translate it."
+                : "Translate unlocks after your first Explain or Example.")}
           </div>
         )}
       </div>

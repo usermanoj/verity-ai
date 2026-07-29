@@ -35,11 +35,14 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
   const topic = await contentRepo.getTopic(topicId);
   if (!topic) notFound();
 
-  const [chunks, bank, media, tables] = await Promise.all([
+  const [chunks, bank, media, tables, glossary] = await Promise.all([
     contentRepo.getCorpusForTopic(topicId),
     contentRepo.getPracticeBank(topicId),
     contentRepo.getMediaForTopic(topicId),
     contentRepo.getTablesForTopic(topicId),
+    // This document's own vocabulary, so the hover glosses match the lesson
+    // rather than the physics demo the curated list was written for.
+    contentRepo.getGlossary(topicId),
   ]);
 
   // Provenance belongs once, at the top. It used to sit under every paragraph
@@ -122,6 +125,7 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
             chunks={chunks}
             mediaByPage={Object.fromEntries(media)}
             tablesByPage={Object.fromEntries(tables)}
+            glossary={glossary}
           />
 
           {bank.length > 0 ? (

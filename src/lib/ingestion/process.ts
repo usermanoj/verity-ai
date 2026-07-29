@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { downloadCorpusFile } from "@/lib/supabase/storage";
 import { extractDocument, isSupportedExtension } from "./extract";
 import { chunkExtractedText } from "./chunk";
+import { generateGlossary } from "./glossary";
 
 export class UnsupportedFileError extends Error {}
 export class DocumentNotFoundError extends Error {}
@@ -57,5 +58,37 @@ export async function extractAndSaveChunks(
 
   const { error } = await admin.from("corpus_chunks").insert(rows);
   if (error) throw error;
+
+  await saveGlossary(documentId, doc.source_file, chunks);
+
   return rows.length;
+}
+
+// Vocabulary for THIS document, from its own text.
+//
+// Awaited rather than fired off, so the terms are in place before the teacher
+// can approve the document and a student can open it — a glossary that
+// arrives after the first reader is a glossary that looks broken.
+//
+// Never throws. A rate-limited extra model call must not fail an upload whose
+// chunks are already saved: the lesson reads perfectly well without underlined
+// words, and re-ingesting to recover a glossary would cost far more than the
+// glossary is worth.
+async function saveGlossary(
+  documentId: string,
+  sourceFile: string,
+  chunks: { heading: string | null; text: string }[],
+): Promise<void> {
+  try {
+    const text = chunks.map((c) => [c.heading, c.text].filter(Boolean).join(": ")).join("\n\n");
+    const terms = await generateGlossary(sourceFile, text);
+    if (terms.length === 0) return;
+
+    const { error } = await supabaseAdmin()
+      .from("corpus_glossary")
+      .insert(terms.map((t) => ({ document_id: documentId, term: t.term, en: t.en, zh: t.zh })));
+    if (error) console.error(`[glossary] could not save terms for ${sourceFile}:`, error);
+  } catch (err) {
+    console.error(`[glossary] skipped for ${sourceFile}:`, err);
+  }
 }

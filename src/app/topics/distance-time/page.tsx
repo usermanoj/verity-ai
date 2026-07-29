@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import DistanceTimeGraph, { type JourneyState } from "@/components/physics/DistanceTimeGraph";
 import AiTutorPanel from "@/components/tutor/AiTutorPanel";
 import ReadingText from "@/components/reading/ReadingText";
+import { GLOSSARY } from "@/data/corpus";
 import PracticeZone from "@/components/practice/PracticeZone";
 import { CORPUS, TOPICS } from "@/data/corpus";
 import { DISTANCE_TIME_BANK } from "@/data/practice-banks";
@@ -54,7 +55,7 @@ export default function DistanceTimeTopic() {
               {learnChunks.map((c) => (
                 <div key={c.id}>
                   <h3 className="mb-1 text-sm font-semibold text-[var(--brand2)]">{c.heading}</h3>
-                  <ReadingText text={c.text} />
+                  <ReadingText text={c.text} glossary={GLOSSARY} />
                   <div className="mt-1 text-xs text-[var(--muted)]">📖 {c.source}</div>
                 </div>
               ))}

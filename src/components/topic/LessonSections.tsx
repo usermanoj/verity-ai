@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import ReadingText from "@/components/reading/ReadingText";
+import ReadingText, { type Glossary } from "@/components/reading/ReadingText";
 import ConceptVisual, { assignVisuals, type VisualKind } from "./visuals/ConceptVisual";
 import DataTable, { type SectionTable } from "./DataTable";
 import { ComparisonCard, FormulaCard, RelationshipCard } from "./StructuredViews";
@@ -29,10 +29,13 @@ export default function LessonSections({
   chunks,
   mediaByPage = {},
   tablesByPage = {},
+  glossary,
 }: {
   chunks: CorpusChunk[];
   mediaByPage?: Record<number, SectionMedia[]>;
   tablesByPage?: Record<number, SectionTable[]>;
+  // This document's own ESL vocabulary, extracted at ingestion.
+  glossary?: Glossary;
 }) {
   const mediaFor = (c: CorpusChunk) => mediaByPage[pageOf(c.source)] ?? [];
   const tablesFor = (c: CorpusChunk) => tablesByPage[pageOf(c.source)] ?? [];
@@ -87,6 +90,7 @@ export default function LessonSections({
           )}
           {part.items.map(({ chunk, index }) => (
             <Section
+              glossary={glossary}
               key={chunk.id}
               chunk={chunk}
               index={index}
@@ -113,12 +117,14 @@ function Section({
   media,
   tables,
   visual,
+  glossary,
 }: {
   chunk: CorpusChunk;
   index: number;
   media: SectionMedia[];
   tables: SectionTable[];
   visual: VisualKind | null;
+  glossary?: Glossary;
 }) {
   const heading = chunk.heading?.trim() || "Section";
   const body = chunk.text.trim() === heading ? "" : chunk.text;
@@ -154,21 +160,21 @@ function Section({
           <DataTable table={{ headers: view.table.headers, rows: view.table.rows }} />
           {view.table.rest && (
             <div className="mt-3">
-              <ReadingText text={view.table.rest} />
+              <ReadingText glossary={glossary} text={view.table.rest} />
             </div>
           )}
         </>
       )}
-      {view.kind === "comparison" && <ComparisonCard comparison={view.comparison} />}
-      {view.kind === "formula" && <FormulaCard formula={view.formula} />}
-      {view.kind === "relationship" && <RelationshipCard relationship={view.relationship} />}
-      {view.kind === "chips" && <ChipList items={view.items} lead={view.lead} />}
+      {view.kind === "comparison" && <ComparisonCard comparison={view.comparison} glossary={glossary} />}
+      {view.kind === "formula" && <FormulaCard formula={view.formula} glossary={glossary} />}
+      {view.kind === "relationship" && <RelationshipCard relationship={view.relationship} glossary={glossary} />}
+      {view.kind === "chips" && <ChipList items={view.items} lead={view.lead} glossary={glossary} />}
       {view.kind === "definition" && (
         <div className="rounded-2xl border-l-2 border-[var(--brand2)] bg-[rgba(34,211,238,0.07)] py-3 pl-4 pr-3">
-          <ReadingText text={view.text} />
+          <ReadingText glossary={glossary} text={view.text} />
         </div>
       )}
-      {view.kind === "prose" && <ReadingText text={view.text} />}
+      {view.kind === "prose" && <ReadingText glossary={glossary} text={view.text} />}
 
       {figures.length > 0 && (
         <div className={`mt-4 grid gap-3 ${figures.length > 1 ? "sm:grid-cols-2" : ""}`}>
@@ -324,12 +330,12 @@ function detectChipList(text: string): { items: string[]; lead: string } | null 
   };
 }
 
-function ChipList({ items, lead }: { items: string[]; lead: string }) {
+function ChipList({ items, lead, glossary }: { items: string[]; lead: string; glossary?: Glossary }) {
   return (
     <div>
       {lead && (
         <div className="mb-3">
-          <ReadingText text={lead} />
+          <ReadingText glossary={glossary} text={lead} />
         </div>
       )}
       <div className="flex flex-wrap gap-2">
