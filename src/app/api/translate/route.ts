@@ -10,10 +10,11 @@ const MAX_TEXT_LEN = 2000;
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, target, sourceId } = (await req.json()) as {
+    const { text, target, sourceId, topicId } = (await req.json()) as {
       text: string;
       target?: string;
       sourceId?: string;
+      topicId?: string;
     };
 
     // Defense in depth: reject oversized input before it reaches Claude,
@@ -43,7 +44,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const glossary = await contentRepo.getGlossary();
+    // This document's own terms, so 磁场 is used for "magnetic field" every
+    // time and a student can match the translation back to the lesson. The
+    // curated physics list was the only option before, which on a geography
+    // upload was worse than none.
+    const glossary = await contentRepo.getGlossary(topicId);
     const glossaryLines = Object.entries(glossary)
       .map(([en, v]) => `- "${en}" → ${v.zh}`)
       .join("\n");
@@ -51,6 +56,11 @@ export async function POST(req: NextRequest) {
     const result = await generateText({
       model: aiModel("translate"),
       maxOutputTokens: 700,
+      // Translating the same passage twice produced two different renderings
+      // — 铁心 one tap, 铁芯 the next. For a student checking their
+      // understanding that reads as one of them being wrong. Nothing here is
+      // creative work; the same English should always give the same Chinese.
+      temperature: 0,
       system:
         `You are a professional bilingual physics teacher translating study material into ${lang} for a Grade 7 ESL student. ` +
         `Translate faithfully and naturally, keeping the scientific meaning exact. Use this approved terminology glossary for consistency:\n${glossaryLines}\n` +

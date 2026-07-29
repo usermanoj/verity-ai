@@ -386,6 +386,36 @@ export type Database = {
         };
         Relationships: [];
       };
+      // ESL vocabulary for one document, extracted from its own text at
+      // ingestion (migration 0021). Inherits the document's approval: a
+      // student cannot open the lesson until the teacher has approved it.
+      corpus_glossary: {
+        Row: {
+          id: string;
+          document_id: string;
+          term: string;
+          en: string;
+          zh: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          document_id: string;
+          term: string;
+          en: string;
+          zh: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          document_id?: string;
+          term?: string;
+          en?: string;
+          zh?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       generated_questions: {
         Row: {
           id: string;

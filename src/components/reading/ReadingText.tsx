@@ -1,19 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import { GLOSSARY } from "@/data/corpus";
+
+export type Glossary = Record<string, { en: string; zh: string }>;
 
 // Highlights approved glossary terms; hover/tap shows an EN + 中文 gloss.
-export default function ReadingText({ text }: { text: string }) {
+//
+// The terms are passed in rather than imported. They used to be one fixed
+// list hand-written for the two demo topics, so on any uploaded document
+// nothing matched — and a glossary that highlights nothing is indistinguishable
+// from one that has been switched off. Each document now carries the
+// vocabulary extracted from its own text at ingestion.
+export default function ReadingText({ text, glossary }: { text: string; glossary?: Glossary }) {
   const [active, setActive] = useState<string | null>(null);
+  const GLOSSARY = glossary ?? {};
   // Longest first. Regex alternation takes the first branch that matches at a
   // position, so with "magnetic" ahead of "magnetic field" the phrase could
   // never win — the student would get the gloss for the adjective and the
   // word "field" left bare. Same for "pole" shadowing "north pole", and
   // "speed" shadowing "steady speed".
   const terms = Object.keys(GLOSSARY).sort((a, b) => b.length - a.length);
-  const pattern = new RegExp(`\\b(${terms.join("|")})\\b`, "gi");
-  const parts = text.split(pattern);
+  // An empty list would build /\b()\b/, which matches at every position and
+  // shatters the paragraph into one span per character.
+  const parts = terms.length
+    ? text.split(new RegExp(`\\b(${terms.join("|")})\\b`, "gi"))
+    : [text];
 
   return (
     <p className="text-[15px] leading-8 text-[var(--text)]/90">

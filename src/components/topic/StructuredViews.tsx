@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import ReadingText from "@/components/reading/ReadingText";
+import ReadingText, { type Glossary } from "@/components/reading/ReadingText";
 import type { Comparison, Formula, Relationship } from "./structure";
 
 // Layouts for the shapes a lesson keeps writing in. Every word rendered here
@@ -12,7 +12,7 @@ import type { Comparison, Formula, Relationship } from "./structure";
 // Two labelled groups side by side. A contrast written as one paragraph makes
 // a student hold both halves in their head at once and compare from memory;
 // side by side, the comparison is the layout.
-export function ComparisonCard({ comparison }: { comparison: Comparison }) {
+export function ComparisonCard({ comparison, glossary }: { comparison: Comparison; glossary?: Glossary }) {
   const sides = [
     { ...comparison.left, accent: "var(--brand)", tint: "rgba(99,102,241,0.10)" },
     { ...comparison.right, accent: "var(--brand2)", tint: "rgba(34,211,238,0.10)" },
@@ -20,7 +20,7 @@ export function ComparisonCard({ comparison }: { comparison: Comparison }) {
 
   return (
     <div>
-      {comparison.lead && <ReadingText text={comparison.lead} />}
+      {comparison.lead && <ReadingText glossary={glossary} text={comparison.lead} />}
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {sides.map((side, i) => (
           <motion.div
@@ -55,10 +55,10 @@ export function ComparisonCard({ comparison }: { comparison: Comparison }) {
 // "Closer the poles, greater is the force." The sentence states a
 // proportionality; the arrow shows it. Students are asked to state these back
 // in exams, so the shape is worth making memorable.
-export function RelationshipCard({ relationship }: { relationship: Relationship }) {
+export function RelationshipCard({ relationship, glossary }: { relationship: Relationship; glossary?: Glossary }) {
   return (
     <div>
-      {relationship.lead && <ReadingText text={relationship.lead} />}
+      {relationship.lead && <ReadingText glossary={glossary} text={relationship.lead} />}
       <motion.div
         initial={{ opacity: 0, scale: 0.97 }}
         whileInView={{ opacity: 1, scale: 1 }}
@@ -88,10 +88,10 @@ export function RelationshipCard({ relationship }: { relationship: Relationship 
 
 // A formula buried mid-paragraph is read as prose and forgotten. Pulled out
 // and set large, it becomes the thing the section is about — which it is.
-export function FormulaCard({ formula }: { formula: Formula }) {
+export function FormulaCard({ formula, glossary }: { formula: Formula; glossary?: Glossary }) {
   return (
     <div>
-      {formula.lead && <ReadingText text={formula.lead} />}
+      {formula.lead && <ReadingText glossary={glossary} text={formula.lead} />}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -104,7 +104,7 @@ export function FormulaCard({ formula }: { formula: Formula }) {
           <span className="font-medium">{formula.expression}</span>
         </div>
       </motion.div>
-      {formula.rest && <ReadingText text={formula.rest} />}
+      {formula.rest && <ReadingText glossary={glossary} text={formula.rest} />}
     </div>
   );
 }

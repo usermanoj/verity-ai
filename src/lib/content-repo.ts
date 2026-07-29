@@ -34,7 +34,11 @@ export interface ContentRepository {
   /** Data tables from the source document, keyed by page/section number. */
   getTablesForTopic(topicId: string): Promise<Map<number, TopicTable[]>>;
   getCorpusChunk(id: string): Promise<CorpusChunk | undefined>;
-  getGlossary(): Promise<Record<string, { en: string; zh: string }>>;
+  /**
+   * ESL vocabulary. With a topicId, the terms extracted from THAT document at
+   * ingestion; without one, the curated list the two demo topics rely on.
+   */
+  getGlossary(topicId?: string): Promise<Record<string, { en: string; zh: string }>>;
   getTranslation(chunkId: string): Promise<string | undefined>;
   getPracticeBank(topicId: string): Promise<PracticeItem[]>;
 }
@@ -232,11 +236,34 @@ class PostgresContentRepository implements ContentRepository {
     return data ? toCorpusChunk(data, data.document_id) : undefined;
   }
 
-  // No tables for these yet — the glossary and the reviewed Chinese
-  // translations are still curated files. Uploaded material simply has no
-  // pre-reviewed translation, which the translate route already handles.
-  async getGlossary() {
-    return this.files.getGlossary();
+  // Uploaded material still has no pre-reviewed translation, which the
+  // translate route already handles.
+  //
+  // The glossary, though, is now per document: the curated file only ever
+  // matched Moments and Distance-Time, so on any real upload nothing was
+  // underlined and the feature looked switched off rather than empty.
+  async getGlossary(topicId?: string) {
+    if (!topicId) return this.files.getGlossary();
+
+    // The two demo topics keep their hand-written terms — their ids aren't
+    // document uuids, so there is nothing to look up.
+    const fromFile = await this.files.getGlossary();
+    if (topicId in TOPICS) return fromFile;
+
+    const { data, error } = await supabaseAdmin()
+      .from("corpus_glossary")
+      .select("term, en, zh")
+      .eq("document_id", topicId);
+    if (error || !data?.length) {
+      // Falling back to the curated list would put physics tooltips on a
+      // geography lesson. Better nothing than wrong.
+      if (error) console.error("[content-repo] glossary lookup failed:", error);
+      return {};
+    }
+
+    return Object.fromEntries(
+      data.map((row) => [String(row.term).toLowerCase(), { en: String(row.en), zh: String(row.zh) }]),
+    );
   }
   async getTranslation(chunkId: string) {
     return this.files.getTranslation(chunkId);
