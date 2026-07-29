@@ -4,6 +4,7 @@ import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { generatePracticeQuestions } from "@/lib/questions/generate";
 import { mapAiCalls } from "@/lib/ai";
+import { translateDocument } from "@/lib/translate/batch";
 
 export const runtime = "nodejs";
 
@@ -80,6 +81,17 @@ export async function POST(req: NextRequest) {
     // A failure here still leaves the (already approved) material perfectly
     // usable, just without generated questions yet.
     after(() => generateQuestionsForDocument(documentId, user.id));
+
+    // Translate the deck now, so the Chinese exists before any student sees
+    // the material and the teacher can read it first in Teacher → Language.
+    // Corrections used to be reactive — a passage only appeared for review
+    // after a student had already been shown the model's version — which is
+    // the wrong way round for anything a school is accountable for.
+    //
+    // Same after() reasoning as above: the Approve click must not wait on
+    // thirty model calls, and a floating promise would be torn down with the
+    // invocation. Failure leaves the material perfectly usable in English.
+    after(() => translateDocument(documentId));
   } else {
     // Rejected chunks shouldn't linger as if they might still be used.
     await admin.from("corpus_chunks").delete().eq("document_id", documentId);
