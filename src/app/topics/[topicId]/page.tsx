@@ -10,6 +10,7 @@ import { contentRepo } from "@/lib/content-repo";
 import { sourceHash } from "@/lib/translate/memory";
 import { requireSignedIn } from "@/lib/auth";
 import { canSee, visibleDocuments } from "@/lib/access";
+import { getLanguagePref } from "@/lib/student-language";
 
 // Generic topic page for teacher-uploaded material. Every approved document
 // is a topic (see PostgresContentRepository), and its id is a uuid, so this
@@ -35,6 +36,10 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
 
   const topic = await contentRepo.getTopic(topicId);
   if (!topic) notFound();
+
+  // Their saved reading level, so the assistant is pitched correctly from the
+  // first reply rather than from whenever they remember to set a dropdown.
+  const pref = await getLanguagePref(user?.id);
 
   const [chunks, bank, media, tables, glossary, sectionTranslations] = await Promise.all([
     contentRepo.getCorpusForTopic(topicId),
@@ -160,7 +165,12 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
         </div>
 
         <div className="lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)]">
-          <AiTutorPanel topicId={topicId} topicTitle={topic.title} />
+          <AiTutorPanel
+            topicId={topicId}
+            topicTitle={topic.title}
+            savedLevel={pref.level}
+            savedChinese={pref.chinese}
+          />
         </div>
       </div>
     </main>

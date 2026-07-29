@@ -66,7 +66,19 @@ function isLevel(value: string | null): value is EslLevel {
 
 let cachedLevel: EslLevel | null = null;
 let cachedChinese: boolean | null = null;
+let seeded = false;
 const levelListeners = new Set<() => void>();
+
+// The saved preference wins over whatever this browser last remembered: it is
+// the one a teacher may have set, and it is the one that follows the student
+// to the next device. localStorage stays as the fallback for a signed-out or
+// demo session, where there is no profile to read.
+function seedFromServer(level: EslLevel | undefined, chinese: boolean | undefined) {
+  if (seeded || level === undefined) return;
+  seeded = true;
+  cachedLevel = level;
+  cachedChinese = chinese ?? false;
+}
 
 function load() {
   if (cachedLevel !== null && cachedChinese !== null) return;
@@ -106,6 +118,20 @@ function notifyLevel() {
   for (const notify of levelListeners) notify();
 }
 
+// Saved to the profile as well as the browser. Fire-and-forget: the choice
+// must take effect on this device immediately whether or not the network is
+// having a good day, and a reading level is not worth blocking a lesson over.
+function saveToProfile(body: { level?: EslLevel; chinese?: boolean }) {
+  void fetch("/api/language/level", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch(() => {
+    // Signed out, offline, or the migration has not run. localStorage still
+    // holds the choice for this browser.
+  });
+}
+
 function writeLevel(next: EslLevel) {
   cachedLevel = next;
   try {
@@ -113,6 +139,7 @@ function writeLevel(next: EslLevel) {
   } catch {
     // Not being able to remember the choice must not stop them making it.
   }
+  saveToProfile({ level: next });
   notifyLevel();
 }
 
@@ -123,6 +150,7 @@ function writeChinese(next: boolean) {
   } catch {
     // As above.
   }
+  saveToProfile({ chinese: next });
   notifyLevel();
 }
 
@@ -336,7 +364,25 @@ async function consumeNdjsonStream(
 }
 // ---------------------------------------------------------------------------
 
-export default function AiTutorPanel({ topicId, topicTitle }: { topicId: string; topicTitle: string }) {
+export default function AiTutorPanel({
+  topicId,
+  topicTitle,
+  savedLevel,
+  savedChinese,
+}: {
+  topicId: string;
+  topicTitle: string;
+  // The signed-in student's saved preference. It follows them between
+  // devices and a teacher can set it for them, which localStorage alone
+  // could do neither of — a shared classroom tablet forgot the choice, and
+  // the one adult who knows a child needs the easiest English had no way to
+  // say so.
+  savedLevel?: EslLevel;
+  savedChinese?: boolean;
+}) {
+  // Seeded once, before first paint, so the student never sees the default
+  // flash to their real setting.
+  seedFromServer(savedLevel, savedChinese);
   const [messages, setMessages] = useState<Msg[]>([
     {
       id: nextId(),
