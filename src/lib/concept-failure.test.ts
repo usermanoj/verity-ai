@@ -1,0 +1,184 @@
+import { describe, expect, it } from "vitest";
+import {
+  conceptsToReteach,
+  lessonsToRevisit,
+  optionText,
+  topMisconception,
+  MIN_ATTEMPTS,
+  type AskedAbout,
+  type QuestionOutcome,
+} from "./concept-failure";
+
+const OPTIONS = ["iron", "steel", "copper", "rubber"];
+
+function q(over: Partial<QuestionOutcome> = {}): QuestionOutcome {
+  return {
+    questionId: over.questionId ?? "q1",
+    prompt: over.prompt ?? "Which metal is magnetic?",
+    level: "Medium",
+    chunkId: over.chunkId ?? "c1",
+    heading: over.heading ?? "Magnetic materials",
+    document: "Magnets and Electromagnets",
+    attempts: 0,
+    wrong: 0,
+    students: 0,
+    wrongAnswers: {},
+    options: OPTIONS,
+    ...over,
+  };
+}
+
+describe("optionText", () => {
+  it("turns a stored letter into the words the student saw", () => {
+    // "B" tells a teacher nothing; "steel" tells them the class believes
+    // steel isn't magnetic.
+    expect(optionText("B", OPTIONS)).toBe("steel");
+  });
+
+  it("leaves a typed answer alone", () => {
+    expect(optionText("magnetite", OPTIONS)).toBe("magnetite");
+  });
+
+  it("leaves a letter alone when there are no options to resolve it against", () => {
+    expect(optionText("B", [])).toBe("B");
+  });
+
+  it("does not mangle a single-letter answer that is genuinely the answer", () => {
+    // A fill-in-the-blank whose answer is "N" with no options must survive.
+    expect(optionText("N", [])).toBe("N");
+  });
+});
+
+describe("topMisconception", () => {
+  it("names the wrong answer most of them gave", () => {
+    const m = topMisconception({ wrongAnswers: { B: 11, C: 2, D: 1 }, options: OPTIONS });
+    expect(m).toMatchObject({ answer: "steel", count: 11 });
+    expect(m?.share).toBeCloseTo(11 / 14);
+  });
+
+  it("returns null when the wrong answers are scattered", () => {
+    // The common, boring case. Promoting whichever answer came first would
+    // invent a misconception the class does not have.
+    expect(topMisconception({ wrongAnswers: { B: 3, C: 3, D: 2 }, options: OPTIONS })).toBeNull();
+  });
+
+  it("ignores a lone wrong answer", () => {
+    // One child picking something is not a shared belief.
+    expect(topMisconception({ wrongAnswers: { B: 1 }, options: OPTIONS })).toBeNull();
+  });
+
+  it("returns null when nothing was answered wrongly", () => {
+    expect(topMisconception({ wrongAnswers: {}, options: OPTIONS })).toBeNull();
+  });
+
+  it("ignores blank answers rather than reporting them as a belief", () => {
+    expect(topMisconception({ wrongAnswers: { "": 9 }, options: OPTIONS })).toBeNull();
+  });
+});
+
+describe("conceptsToReteach", () => {
+  it("groups questions by the section they came from", () => {
+    const out = conceptsToReteach([
+      q({ questionId: "a", chunkId: "c1", attempts: 10, wrong: 6, students: 10 }),
+      q({ questionId: "b", chunkId: "c1", attempts: 10, wrong: 4, students: 10 }),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ attempts: 20, wrong: 10, students: 10 });
+  });
+
+  it("stays silent on a concept with too little evidence", () => {
+    // One confused child must not look like a curriculum problem.
+    const out = conceptsToReteach([q({ attempts: MIN_ATTEMPTS - 1, wrong: 3, students: 1 })]);
+    expect(out).toEqual([]);
+  });
+
+  it("says nothing about a concept nobody got wrong", () => {
+    expect(conceptsToReteach([q({ attempts: 20, wrong: 0, students: 20 })])).toEqual([]);
+  });
+
+  it("ranks by how many students got it wrong, not by rate", () => {
+    // "Rare idea" fails 100% of six attempts; "Common idea" fails 50% of
+    // twenty. The rate flatters the first, but ten children are stuck on the
+    // second and only six on the first — and a teacher's Monday goes to the
+    // ten. Both clear the evidence floor, so this tests the ordering rather
+    // than the filter.
+    const out = conceptsToReteach([
+      q({ questionId: "tiny", chunkId: "small", heading: "Rare idea", attempts: 6, wrong: 6, students: 6 }),
+      q({ questionId: "big", chunkId: "broad", heading: "Common idea", attempts: 20, wrong: 10, students: 20 }),
+    ]);
+    expect(out.map((c) => c.heading)).toEqual(["Common idea", "Rare idea"]);
+    expect(out[0].failureRate).toBeLessThan(out[1].failureRate);
+  });
+
+  it("does not sum distinct students across questions", () => {
+    // The same ten children answering two questions is ten students, not
+    // twenty — a rolled-up count that double-counts a class is worse than
+    // no count.
+    const out = conceptsToReteach([
+      q({ questionId: "a", chunkId: "c1", attempts: 10, wrong: 5, students: 10 }),
+      q({ questionId: "b", chunkId: "c1", attempts: 10, wrong: 5, students: 10 }),
+    ]);
+    expect(out[0].students).toBe(10);
+  });
+
+  it("surfaces the worst question and its misconception", () => {
+    const out = conceptsToReteach([
+      q({ questionId: "easy", chunkId: "c1", prompt: "Easy one", attempts: 10, wrong: 1, students: 10 }),
+      q({
+        questionId: "hard",
+        chunkId: "c1",
+        prompt: "Which metal is magnetic?",
+        attempts: 14,
+        wrong: 12,
+        students: 14,
+        wrongAnswers: { B: 11, C: 1 },
+      }),
+    ]);
+    expect(out[0].worstQuestion?.prompt).toBe("Which metal is magnetic?");
+    expect(out[0].misconception?.answer).toBe("steel");
+  });
+
+  it("reports no misconception when the worst question has no clear pattern", () => {
+    const out = conceptsToReteach([
+      q({ attempts: 12, wrong: 6, students: 12, wrongAnswers: { B: 2, C: 2, D: 2 } }),
+    ]);
+    expect(out[0].misconception).toBeNull();
+  });
+});
+
+describe("lessonsToRevisit", () => {
+  const row = (over: Partial<AskedAbout>): AskedAbout => ({
+    topic: "Lesson",
+    presses: 0,
+    students: 0,
+    maxInOneSitting: 0,
+    repeatedStudents: 0,
+    ...over,
+  });
+
+  it("puts repeated asking above raw volume", () => {
+    // Twenty students pressing Explain once each is a popular lesson. Three
+    // pressing it four times each is a lesson that did not land.
+    const out = lessonsToRevisit([
+      row({ topic: "Popular", presses: 20, students: 20, maxInOneSitting: 1 }),
+      row({ topic: "Confusing", presses: 12, students: 3, maxInOneSitting: 4, repeatedStudents: 3 }),
+    ]);
+    expect(out.map((r) => r.topic)).toEqual(["Confusing", "Popular"]);
+  });
+
+  it("keeps a lesson where one student asked repeatedly", () => {
+    // The signal that gets lost in a total.
+    const out = lessonsToRevisit([row({ topic: "Quiet", presses: 4, students: 1, maxInOneSitting: 4, repeatedStudents: 1 })]);
+    expect(out).toHaveLength(1);
+  });
+
+  it("drops lessons nobody asked about", () => {
+    expect(lessonsToRevisit([row({ topic: "Untouched", presses: 0 })])).toEqual([]);
+  });
+
+  it("does not mutate its input", () => {
+    const rows = [row({ topic: "B", presses: 1 }), row({ topic: "A", presses: 1 })];
+    lessonsToRevisit(rows);
+    expect(rows.map((r) => r.topic)).toEqual(["B", "A"]);
+  });
+});

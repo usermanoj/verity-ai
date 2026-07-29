@@ -591,6 +591,15 @@ export type Database = {
         Args: { p_student_id: string };
         Returns: unknown;
       };
+      // What the class is getting wrong, and what they keep asking (0030).
+      teacher_question_outcomes: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
+      teacher_asked_about: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
       rotate_class_code: {
         Args: { p_class_id: string };
         Returns: unknown;
