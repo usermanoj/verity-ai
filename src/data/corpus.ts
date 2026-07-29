@@ -26,6 +26,8 @@ export type TopicMeta = {
   grade: string;
   title: string;
   objective: string;
+  /** When the teacher added it. Absent for the two hand-built demo topics. */
+  addedAt?: string;
 };
 
 export const TOPICS: Record<string, TopicMeta> = {
