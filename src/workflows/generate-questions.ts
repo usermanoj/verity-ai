@@ -56,6 +56,14 @@ export async function generateQuestionsWorkflow(chunkId: string, teacherId: stri
 
   const chunk = await loadChunk(chunkId);
   const questions = await generateStep(chunk.heading, chunk.text);
+
+  // A section can legitimately produce nothing: a purely narrative one — a
+  // history, an anecdote — has no science in it to test, and the generator is
+  // told to return an empty set rather than pad one out (see
+  // lib/questions/narrative.ts). Returning here rather than inserting no rows
+  // and then suspending on a review hook for a batch with nothing in it.
+  if (questions.length === 0) return { chunkId, questionIds: [], approvedCount: 0 };
+
   const questionIds = await savePendingQuestions(chunkId, teacherId, questions);
 
   // Suspends here — costs nothing while waiting — until the teacher submits

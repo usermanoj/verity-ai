@@ -43,6 +43,7 @@ const SYSTEM_PROMPT = [
   "5. It asks about something the source mentions but does not explain, so no answer is recoverable.",
   "6. It is a numeric question whose answer the source gives in words rather than as a number, or whose value cannot be computed from the source.",
   "7. It is a true/false question whose prompt is a question rather than a statement, so there is nothing to judge true or false.",
+  "8. It tests the story around the science rather than the science: who discovered, invented or named something, in what year or century, or in which country or civilisation. A date, a person or a place as the answer is always a fault here, even when the source states it plainly. Knowing the discoverer is not knowing the subject, and for a student reading in a second language an unfamiliar proper noun is difficulty that teaches nothing.",
   "",
   "Mark it ok only when a careful student reading ONLY this source would arrive at exactly the marked answer.",
   "Judge every question you are given, and return one verdict per question with its index.",

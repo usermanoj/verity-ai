@@ -100,7 +100,9 @@ function normalise(s: string): string {
 }
 
 // Accepts "B", "b)", or "2" — the same forms the grader accepts.
-function indexOfChoice(choice: string, optionCount: number): number {
+// Exported so narrative.ts can resolve a stored letter to the option the
+// student actually saw, rather than keeping a second copy of these rules.
+export function indexOfChoice(choice: string, optionCount: number): number {
   const key = choice.trim().toUpperCase().replace(/[).\s]/g, "");
   const index = /^[A-Z]$/.test(key) ? key.charCodeAt(0) - 65 : Number(key) - 1;
   return Number.isInteger(index) && index >= 0 && index < optionCount ? index : -1;

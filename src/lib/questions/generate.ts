@@ -2,6 +2,7 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import { aiModel, gatewayFailover, STRUCTURED_FALLBACK_MODELS, withRateLimitRetry } from "@/lib/ai";
 import type { Question } from "@/lib/grade";
+import { isNarrativeRecall } from "./narrative";
 import { validateQuestion } from "./validate";
 import { verifyQuestions } from "./verify";
 
@@ -78,7 +79,16 @@ const SYSTEM_PROMPT = [
   "  fill       — a sentence with one key term removed. List every spelling that should count.",
   "  matching   — 3-5 term/meaning pairs. Ideal for vocabulary and for the key words of a topic.",
   "",
-  "Rules, in priority order:",
+  "NARRATIVE MATERIAL — read this before writing anything.",
+  "Some of the material is the story around the science rather than the science: who discovered something, when, where, and what it was called. Never test it.",
+  "  · Never ask who discovered, invented, named or first described something.",
+  "  · Never ask in what year, century or era something happened, and never make a date the answer.",
+  "  · Never make a person, a place, a country or a civilisation the answer to a question.",
+  "  · These facts are the easiest thing in a section to turn into questions and the least worth asking. A student who cannot name the discoverer still understands the physics — and for someone reading in a second language, an unfamiliar proper noun is difficulty that teaches nothing.",
+  "",
+  "If a section is ENTIRELY narrative — a history, an anecdote, a scene-setting introduction with no explanation in it — return an EMPTY list of questions. That is the correct answer for material with nothing to test, and it is expected. Do not pad the set with names and dates to reach five, and do not stretch a single passing scientific remark into seven questions.",
+  "",
+  "Rules, in priority order. Everything above outranks all of them — an empty set from a narrative section beats a full set that satisfies these:",
   "1. NEVER invent facts, numbers, examples or scenarios that are not in the source text or directly derivable from it. A question a student cannot answer from this material is a broken question.",
   "2. Every question must stand on its own. An mcq must name its options; a fill-in-the-blank must show the sentence with a blank; a matching question must list both columns. Never write 'which of the following' without the following.",
   "3. Keep the English plain and the sentences short. Test the physics, not the reading level — but keep subject terminology exact.",
@@ -115,20 +125,25 @@ export async function generatePracticeQuestions(chunkHeading: string | null, chu
 
   const generated = output.questions.map((q) => ({ ...q, question: withoutNulls(q.question) as Question }));
 
-  // Two gates before a question is ever offered to a teacher.
+  // Three gates before a question is ever offered to a teacher.
   //
   // The first is free and deterministic: a question whose own shape makes it
   // unanswerable — duplicate options, a matching row with no unique pairing,
   // a fill-in-the-blank with no blank — is dropped outright. Measured on a
   // real deck, about one in twelve failed this.
   //
-  // The second reads the source. It catches the well-formed question whose
+  // The second is also free: a question testing who discovered something and
+  // when is answerable, well formed, and still not worth asking. See
+  // narrative.ts for the section that prompted it.
+  //
+  // The third reads the source. It catches the well-formed question whose
   // answer simply is not in the material, which no structural rule can see
   // and which is the failure that actually costs a student marks.
   const wellFormed = generated.filter((q) => validateQuestion(q.prompt, q.question).length === 0);
-  if (!VERIFY || wellFormed.length === 0) return wellFormed;
+  const teachable = wellFormed.filter((q) => !isNarrativeRecall(q.prompt, q.question));
+  if (!VERIFY || teachable.length === 0) return teachable;
 
-  const verified = await verifyQuestions(chunkHeading, chunkText, wellFormed);
+  const verified = await verifyQuestions(chunkHeading, chunkText, teachable);
   return verified.filter((v) => v.ok).map((v) => v.question);
 }
 
