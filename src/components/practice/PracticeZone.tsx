@@ -351,6 +351,19 @@ function MatchingInput({
     );
   }
 
+  // A meaning belongs to exactly one term — the question validator rejects
+  // duplicate terms AND duplicate meanings before a question is ever stored,
+  // so two rows sharing an answer is not a hard question, it is an
+  // impossible one that can only be marked wrong.
+  //
+  // Offering it anyway asked a twelve-year-old to hold "which have I used
+  // already" in their head while reading in a second language, which is not
+  // the thing being assessed. Used meanings are disabled; "Choose…" always
+  // stays open, so a wrong pick is undone by clearing that row rather than
+  // by trapping them.
+  const used = new Set(chosen.filter(Boolean));
+  const remaining = meanings.length - used.size;
+
   return (
     <div className="mt-3 grid gap-2">
       {pairs.map((pair, row) => (
@@ -363,21 +376,48 @@ function MatchingInput({
             className="rounded-xl border border-[var(--border)] bg-[#131a33] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--brand)]"
           >
             <option value="">Choose…</option>
-            {meanings.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
+            {meanings.map((m) => {
+              // Taken by ANOTHER row. Never disable this row's own answer, or
+              // the select could not render the value it is holding.
+              const takenElsewhere = used.has(m) && chosen[row] !== m;
+              return (
+                <option key={m} value={m} disabled={takenElsewhere}>
+                  {m}
+                  {takenElsewhere ? " · already used" : ""}
+                </option>
+              );
+            })}
           </select>
         </div>
       ))}
+      {remaining > 0 && used.size > 0 && (
+        <p className="text-xs text-[var(--muted)]">
+          {remaining} meaning{remaining === 1 ? "" : "s"} left · each is used once
+        </p>
+      )}
     </div>
   );
 }
 
 // "0=Can be switched on and off" per line. Older answers used the term's text
 // as the key, so those are still read back by matching the term.
-function parseMatchingAnswer(value: string, rowCount: number): (string | undefined)[] {
+/**
+ * Which meanings a row may still offer.
+ *
+ * A meaning belongs to exactly one term, so anything another row has taken is
+ * closed — except this row's own current answer, which must stay in the list
+ * or the select could not render the value it holds.
+ */
+export function availableMeanings(
+  meanings: readonly string[],
+  chosen: readonly (string | undefined)[],
+  row: number,
+): string[] {
+  const used = new Set(chosen.filter((c, i) => Boolean(c) && i !== row));
+  return meanings.filter((m) => !used.has(m));
+}
+
+export function parseMatchingAnswer(value: string, rowCount: number): (string | undefined)[] {
   const rows = new Array<string | undefined>(rowCount);
   for (const line of value.split("\n")) {
     const at = line.indexOf("=");
