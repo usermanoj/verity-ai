@@ -107,6 +107,19 @@ export default function LoginPage() {
       <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[var(--brand)] text-2xl glow-brand">🛡️</span>
       <h1 className="mt-4 text-2xl font-bold tracking-tight">Sign in to Verity AI</h1>
       <p className="mt-2 text-sm text-[var(--muted)]">Use your school&apos;s Google or Microsoft account.</p>
+      {/* The question this page kept failing to answer: "which role am I
+          signing in as?"
+          None — and that is the point. A role is granted by the school, not
+          picked at a login, or any student could elect to be a principal.
+          But refusing a choice without explaining why reads as the page
+          having forgotten to ask, so it says so plainly and tells them what
+          happens next. */}
+      <p className="mt-4 max-w-sm text-sm text-[var(--muted)]">
+        There is nothing to choose here. Your school decides whether you are a{" "}
+        <span className="text-[var(--text)]">student</span>, <span className="text-[var(--text)]">teacher</span>,{" "}
+        <span className="text-[var(--text)]">head of department</span> or{" "}
+        <span className="text-[var(--text)]">principal</span> — signing in takes you straight to the right place.
+      </p>
       <div className="mt-8 w-full">
         <Suspense fallback={null}>
           <LoginButtons />
