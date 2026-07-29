@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PRESSABLE } from "@/lib/ui";
 
 export type ClassCode = {
@@ -32,6 +32,27 @@ export default function ClassCodes({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Which class's QR is on screen. This used to be a <details> whose summary
+  // always read "Show QR" — it did toggle, but nothing said so, and clicking
+  // anywhere else left the panel floating over the row beneath it. One open
+  // at a time, and every ordinary way of dismissing a popover works.
+  const [qrOpen, setQrOpen] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!qrOpen) return;
+    const close = () => setQrOpen(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    // Capture phase, so the toggle button's own click doesn't immediately
+    // reopen what this just closed.
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [qrOpen]);
 
   async function rotate(classId: string, hadCode: boolean) {
     // Replacing a live code cuts off a code that may be written on a
@@ -112,17 +133,28 @@ export default function ClassCodes({
             )}
 
             {row.code && qrFor?.[row.classId] ? (
-              <details className="relative">
-                <summary className={`cursor-pointer rounded-xl border border-[var(--border)] px-3 py-2 text-xs text-[var(--muted)] hover:text-[var(--text)] ${PRESSABLE}`}>
-                  Show QR
-                </summary>
-                <div className="absolute right-0 z-10 mt-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-2)] p-3 shadow-2xl">
-                  {qrFor[row.classId]}
-                  <p className="mt-2 max-w-[9rem] text-[11px] leading-snug text-[var(--muted)]">
-                    Project this. Students scan, sign in, and the code is already filled in.
-                  </p>
-                </div>
-              </details>
+              <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  aria-expanded={qrOpen === row.classId}
+                  onClick={() => setQrOpen(qrOpen === row.classId ? null : row.classId)}
+                  className={`rounded-xl border px-3 py-2 text-xs ${PRESSABLE} ${
+                    qrOpen === row.classId
+                      ? "border-[var(--brand)] text-[var(--text)]"
+                      : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]"
+                  }`}
+                >
+                  {qrOpen === row.classId ? "✕ Hide QR" : "▸ Show QR"}
+                </button>
+                {qrOpen === row.classId && (
+                  <div className="absolute right-0 z-10 mt-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-2)] p-3 shadow-2xl">
+                    {qrFor[row.classId]}
+                    <p className="mt-2 max-w-[9rem] text-[11px] leading-snug text-[var(--muted)]">
+                      Project this. Students scan, sign in, and the code is already filled in.
+                    </p>
+                  </div>
+                )}
+              </div>
             ) : null}
 
             <button
