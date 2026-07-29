@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { grade } from "@/lib/grade";
 import type { PracticeItem } from "@/data/practice-banks";
@@ -365,33 +365,54 @@ function MatchingInput({
   const remaining = meanings.length - used.size;
 
   return (
-    <div className="mt-3 grid gap-2">
-      {pairs.map((pair, row) => (
-        <div key={row} className="grid items-center gap-2 sm:grid-cols-[1fr_1.3fr]">
-          <span className="text-sm font-medium">{pair.left}</span>
-          <select
-            aria-label={`Match for ${pair.left}`}
-            value={chosen[row] ?? ""}
-            onChange={(e) => set(row, e.target.value)}
-            className="rounded-xl border border-[var(--border)] bg-[#131a33] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--brand)]"
-          >
-            <option value="">Choose…</option>
-            {meanings.map((m) => {
-              // Taken by ANOTHER row. Never disable this row's own answer, or
-              // the select could not render the value it is holding.
-              const takenElsewhere = used.has(m) && chosen[row] !== m;
-              return (
-                <option key={m} value={m} disabled={takenElsewhere}>
-                  {m}
-                  {takenElsewhere ? " · already used" : ""}
-                </option>
-              );
-            })}
-          </select>
-        </div>
-      ))}
+    // ONE grid for every row, not a grid per row.
+    //
+    // Each pair used to be its own grid with `1fr 1.3fr` columns, so the
+    // term column was measured separately for each line — a row whose select
+    // held a long meaning sized its columns differently from the rest, and
+    // the dropdowns stepped in and out down the page. Columns can only line
+    // up if they belong to the same grid.
+    //
+    // max-content on the term column also means the labels take exactly the
+    // width of the longest term rather than a third of the card.
+    <div className="mt-3 grid items-center gap-x-3 gap-y-2 sm:grid-cols-[max-content_1fr]">
+      {pairs.map((pair, row) => {
+        const label = `Match for ${pair.left}`;
+        return (
+          <Fragment key={row}>
+            <span className="text-sm font-medium">{pair.left}</span>
+            <select
+              aria-label={label}
+              value={chosen[row] ?? ""}
+              onChange={(e) => set(row, e.target.value)}
+              // The same treatment as every other input in this component and
+              // across the app (bg-black/20 + a border ring). This one carried
+              // a hardcoded #131a33, which read as a second, lighter surface
+              // sitting on the card for no reason.
+              className="w-full rounded-xl bg-black/20 px-3 py-2 text-sm text-[var(--text)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--brand)]"
+            >
+              <option value="" className="bg-[#0e1530]">
+                Choose…
+              </option>
+              {meanings.map((m) => {
+                // Taken by ANOTHER row. Never disable this row's own answer,
+                // or the select could not render the value it is holding.
+                const takenElsewhere = used.has(m) && chosen[row] !== m;
+                return (
+                  // The explicit option background is needed on Windows
+                  // Chrome, where an unstyled dropdown list renders on white.
+                  <option key={m} value={m} disabled={takenElsewhere} className="bg-[#0e1530]">
+                    {m}
+                    {takenElsewhere ? " · already used" : ""}
+                  </option>
+                );
+              })}
+            </select>
+          </Fragment>
+        );
+      })}
       {remaining > 0 && used.size > 0 && (
-        <p className="text-xs text-[var(--muted)]">
+        <p className="text-xs text-[var(--muted)] sm:col-span-2">
           {remaining} meaning{remaining === 1 ? "" : "s"} left · each is used once
         </p>
       )}
