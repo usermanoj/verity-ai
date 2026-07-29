@@ -40,6 +40,12 @@ export interface ContentRepository {
    */
   getGlossary(topicId?: string): Promise<Record<string, { en: string; zh: string }>>;
   getTranslation(chunkId: string): Promise<string | undefined>;
+  /**
+   * Stored Chinese for this document's sections, keyed by a hash of the
+   * source text — written by the batch pass at approval, and by any teacher
+   * correction since.
+   */
+  getSectionTranslations(topicId: string): Promise<Record<string, string>>;
   getPracticeBank(topicId: string): Promise<PracticeItem[]>;
 }
 
@@ -69,6 +75,11 @@ class FileContentRepository implements ContentRepository {
   }
   async getTranslation(chunkId: string): Promise<string | undefined> {
     return ZH_TRANSLATIONS[chunkId];
+  }
+  // The two demo topics carry hand-reviewed translations keyed by chunk id,
+  // not by source hash, and have no rows in translation_memory.
+  async getSectionTranslations(): Promise<Record<string, string>> {
+    return {};
   }
   async getPracticeBank(topicId: string): Promise<PracticeItem[]> {
     if (topicId === "moments") return MOMENTS_BANK;
@@ -270,6 +281,21 @@ class PostgresContentRepository implements ContentRepository {
   }
   async getTranslation(chunkId: string) {
     return this.files.getTranslation(chunkId);
+  }
+
+  async getSectionTranslations(topicId: string): Promise<Record<string, string>> {
+    if (topicId in TOPICS) return {};
+    const { data, error } = await supabaseAdmin()
+      .from("translation_memory")
+      .select("source_hash, translation")
+      .eq("document_id", topicId);
+    if (error) {
+      // A lesson still reads perfectly in English; losing the Chinese is a
+      // degraded experience, not a broken page.
+      console.error("[content-repo] section translations lookup failed:", error);
+      return {};
+    }
+    return Object.fromEntries((data ?? []).map((r) => [r.source_hash as string, r.translation as string]));
   }
 
   async getPracticeBank(topicId: string): Promise<PracticeItem[]> {

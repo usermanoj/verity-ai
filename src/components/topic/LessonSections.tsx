@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import ReadingText, { type Glossary } from "@/components/reading/ReadingText";
 import ConceptVisual, { assignVisuals, type VisualKind } from "./visuals/ConceptVisual";
@@ -30,12 +31,16 @@ export default function LessonSections({
   mediaByPage = {},
   tablesByPage = {},
   glossary,
+  translationBySection,
 }: {
   chunks: CorpusChunk[];
   mediaByPage?: Record<number, SectionMedia[]>;
   tablesByPage?: Record<number, SectionTable[]>;
   // This document's own ESL vocabulary, extracted at ingestion.
   glossary?: Glossary;
+  // Chinese for a section, keyed by chunk id. Written when the teacher
+  // approved the document, so it is reviewed before any student reads it.
+  translationBySection?: Record<string, string>;
 }) {
   const mediaFor = (c: CorpusChunk) => mediaByPage[pageOf(c.source)] ?? [];
   const tablesFor = (c: CorpusChunk) => tablesByPage[pageOf(c.source)] ?? [];
@@ -91,6 +96,7 @@ export default function LessonSections({
           {part.items.map(({ chunk, index }) => (
             <Section
               glossary={glossary}
+              translation={translationBySection?.[chunk.id]}
               key={chunk.id}
               chunk={chunk}
               index={index}
@@ -118,6 +124,7 @@ function Section({
   tables,
   visual,
   glossary,
+  translation,
 }: {
   chunk: CorpusChunk;
   index: number;
@@ -125,7 +132,9 @@ function Section({
   tables: SectionTable[];
   visual: VisualKind | null;
   glossary?: Glossary;
+  translation?: string;
 }) {
+  const [showZh, setShowZh] = useState(false);
   const heading = chunk.heading?.trim() || "Section";
   const body = chunk.text.trim() === heading ? "" : chunk.text;
   const view = body ? classify(body) : { kind: "empty" as const };
@@ -175,6 +184,28 @@ function Section({
         </div>
       )}
       {view.kind === "prose" && <ReadingText glossary={glossary} text={view.text} />}
+
+      {/* The whole section in Chinese, written when the teacher approved this
+          document and reviewable by them before any student sees it. Shown
+          BESIDE the English rather than replacing it: a student learning in a
+          second language needs to map one onto the other, and swapping the
+          text out takes away the thing they are here to learn. */}
+      {translation && (
+        <div className="mt-3">
+          <button
+            onClick={() => setShowZh((v) => !v)}
+            aria-expanded={showZh}
+            className="rounded-xl border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--text)]"
+          >
+            {showZh ? "✕ Hide 中文" : "中文 Read this in Chinese"}
+          </button>
+          {showZh && (
+            <p className="mt-2 rounded-2xl border-l-2 border-[var(--brand2)] bg-[rgba(34,211,238,0.07)] py-3 pl-4 pr-3 text-[15px] leading-8">
+              {translation}
+            </p>
+          )}
+        </div>
+      )}
 
       {figures.length > 0 && (
         <div className={`mt-4 grid gap-3 ${figures.length > 1 ? "sm:grid-cols-2" : ""}`}>

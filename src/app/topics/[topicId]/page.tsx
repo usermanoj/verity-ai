@@ -7,6 +7,7 @@ import LessonNav from "@/components/topic/LessonNav";
 import HashTarget from "@/components/topic/HashTarget";
 import PracticeZone from "@/components/practice/PracticeZone";
 import { contentRepo } from "@/lib/content-repo";
+import { sourceHash } from "@/lib/translate/memory";
 import { requireSignedIn } from "@/lib/auth";
 import { canSee, visibleDocuments } from "@/lib/access";
 
@@ -35,7 +36,7 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
   const topic = await contentRepo.getTopic(topicId);
   if (!topic) notFound();
 
-  const [chunks, bank, media, tables, glossary] = await Promise.all([
+  const [chunks, bank, media, tables, glossary, sectionTranslations] = await Promise.all([
     contentRepo.getCorpusForTopic(topicId),
     contentRepo.getPracticeBank(topicId),
     contentRepo.getMediaForTopic(topicId),
@@ -43,7 +44,20 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
     // This document's own vocabulary, so the hover glosses match the lesson
     // rather than the physics demo the curated list was written for.
     contentRepo.getGlossary(topicId),
+    // Chinese for each section, written by the batch pass when the teacher
+    // approved this document — and replaced by their correction if they made
+    // one.
+    contentRepo.getSectionTranslations(topicId),
   ]);
+
+  // Keyed by source hash in the database, by chunk id for the client: the
+  // lesson components are client-side and cannot hash, and this page is a
+  // Server Component, so the join belongs here.
+  const translationBySection: Record<string, string> = {};
+  for (const c of chunks) {
+    const zh = sectionTranslations[sourceHash(c.text)];
+    if (zh) translationBySection[c.id] = zh;
+  }
 
   // Provenance belongs once, at the top. It used to sit under every paragraph
   // as "<file> — Page/Section 7", which is filing metadata: it told a student
@@ -126,6 +140,7 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
             mediaByPage={Object.fromEntries(media)}
             tablesByPage={Object.fromEntries(tables)}
             glossary={glossary}
+            translationBySection={translationBySection}
           />
 
           {bank.length > 0 ? (
