@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CHECKABLE_CHUNK_IDS } from "@/lib/tutor";
 import RichText from "./RichText";
+import { speakSequence, type Segment, type Sequence } from "./speech-sequence";
 
 type Intent = "explain" | "translate" | "example" | "askme" | "check";
 type EslLevel = "advanced" | "intermediate" | "beginner" | "beginner_zh";
@@ -88,10 +89,15 @@ function splitCite(text: string): { body: string; cite?: string } {
 // correct voice+lang (a single English-tagged utterance mispronounces or
 // silently skips Chinese characters). Also works around a long-standing
 // Chrome bug where utterances longer than ~15s silently stop.
-const CJK_RANGE = /[㐀-鿿＀-￯]/;
+// U+3000–303F is CJK punctuation — 。！？、，and the ideographic space. It was
+// missing, so every Chinese full stop counted as English and a translated
+// paragraph was chopped into alternating zh/en runs at each sentence end:
+// extra voice switches, and an audible stutter between sentences.
+const CJK_CHARS = "\\u3000-\\u303f\\u4e00-\\u9fff\\uff00-\\uffef";
+const CJK_RANGE = new RegExp(`[${CJK_CHARS}]`);
 
-function splitByLanguage(text: string): { text: string; lang: "zh-CN" | "en-US" }[] {
-  const parts = text.match(/[㐀-鿿＀-￯]+|[^㐀-鿿＀-￯]+/g) || [text];
+function splitByLanguage(text: string): Segment[] {
+  const parts = text.match(new RegExp(`[${CJK_CHARS}]+|[^${CJK_CHARS}]+`, "g")) || [text];
   return parts
     .map((p) => ({ text: p, lang: (CJK_RANGE.test(p[0] ?? "") ? "zh-CN" : "en-US") as "zh-CN" | "en-US" }))
     .filter((p) => p.text.trim().length > 0);
@@ -113,10 +119,41 @@ function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
   );
 }
 
-// The one interval currently keeping speech alive, so stopSpeaking can clear
-// it. Without this, cancelling left a timer calling pause()/resume() on a
-// dead synth every 5 seconds for the rest of the session.
-let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+// Chrome stops speaking after roughly 15 seconds of a single utterance. The
+// widely-copied workaround is a timer calling pause()/resume() every few
+// seconds — which this used, and which has its own well-known failure: on
+// several Chrome versions resume() restarts the utterance from the beginning.
+// Combined with the cancel bug below, that is speech which will not stop AND
+// repeats itself.
+//
+// Splitting on sentence boundaries removes the need for the hack entirely: no
+// utterance is long enough to hit the limit, so there is no timer to go
+// wrong. A sentence is also the right place to change voice for a student
+// following along.
+const MAX_UTTERANCE_CHARS = 180;
+
+export function splitForSpeech(text: string): Segment[] {
+  return splitByLanguage(text).flatMap((run) => {
+    if (run.text.length <= MAX_UTTERANCE_CHARS) return [run];
+    // Break after sentence-ending punctuation, including the full-width stops
+    // and question marks used in Chinese.
+    const pieces = run.text.match(/[^.!?。！？]+[.!?。！？]*\s*/g) ?? [run.text];
+    const out: Segment[] = [];
+    let buffer = "";
+    for (const piece of pieces) {
+      if (buffer && buffer.length + piece.length > MAX_UTTERANCE_CHARS) {
+        out.push({ text: buffer, lang: run.lang });
+        buffer = "";
+      }
+      buffer += piece;
+    }
+    if (buffer.trim()) out.push({ text: buffer, lang: run.lang });
+    return out;
+  });
+}
+
+// The sequence currently playing, so stopSpeaking can invalidate it.
+let current: Sequence | null = null;
 
 // Starting was the only thing you could do. A minute of synthesised speech
 // with no way to stop it is worse than no read-aloud at all — in a classroom
@@ -124,10 +161,10 @@ let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 // accessibility aid it's a trap.
 export function stopSpeaking() {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
-  if (keepAliveTimer) {
-    clearInterval(keepAliveTimer);
-    keepAliveTimer = null;
-  }
+  // Order matters: invalidate the sequence BEFORE cancelling, because
+  // cancel() delivers an `onend` that would otherwise start the next segment.
+  current?.cancel();
+  current = null;
   window.speechSynthesis.cancel();
 }
 
@@ -135,40 +172,26 @@ function speak(text: string, onFinished?: () => void) {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
   const synth = window.speechSynthesis;
   stopSpeaking();
-  const segments = splitByLanguage(text);
-  let i = 0;
-  const speakNext = () => {
-    if (i >= segments.length) {
+
+  current = speakSequence(
+    splitForSpeech(text),
+    (segment, done) => {
+      const u = new SpeechSynthesisUtterance(segment.text);
+      u.lang = segment.lang;
+      const voice = pickVoice(segment.lang);
+      if (voice) u.voice = voice;
+      u.rate = segment.lang === "zh-CN" ? 0.85 : 0.92;
+      u.onend = done;
+      u.onerror = done;
+      synth.speak(u);
+    },
+    () => {
       // Reaching the end is as much "no longer speaking" as pressing stop —
       // the button has to return to "Read aloud" either way.
-      if (keepAliveTimer) {
-        clearInterval(keepAliveTimer);
-        keepAliveTimer = null;
-      }
+      current = null;
       onFinished?.();
-      return;
-    }
-    const seg = segments[i++];
-    const u = new SpeechSynthesisUtterance(seg.text);
-    u.lang = seg.lang;
-    const voice = pickVoice(seg.lang);
-    if (voice) u.voice = voice;
-    u.rate = seg.lang === "zh-CN" ? 0.85 : 0.92;
-    u.onend = speakNext;
-    u.onerror = speakNext;
-    synth.speak(u);
-  };
-  speakNext();
-  // Chrome workaround: long speech silently halts unless kept alive.
-  keepAliveTimer = setInterval(() => {
-    if (!synth.speaking) {
-      if (keepAliveTimer) clearInterval(keepAliveTimer);
-      keepAliveTimer = null;
-      return;
-    }
-    synth.pause();
-    synth.resume();
-  }, 5000);
+    },
+  );
 }
 
 // Reads the newline-delimited-JSON stream from /api/tutor, calling onDelta
