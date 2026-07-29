@@ -80,11 +80,40 @@ export async function getSchoolAnalytics(): Promise<SchoolAnalytics | null> {
   return callAnalytics<SchoolAnalytics>("school_analytics");
 }
 
+// Language support across the school. Everything here exists per student for
+// a teacher; none of it rolled up to the people who decide where help goes.
+export type SchoolLanguage = {
+  students: number;
+  levels: { advanced: number; intermediate: number; beginner: number };
+  chinese: number;
+  unassessed: number;
+  sections: {
+    grade: string;
+    section: string;
+    subject: string;
+    students: number;
+    beginner: number;
+    chinese: number;
+    unassessed: number;
+  }[];
+  glossary: { edited: number; total: number };
+  translations: { corrected: number; total: number };
+};
+
+export async function getSchoolLanguage(): Promise<SchoolLanguage | null> {
+  return callAnalytics<SchoolLanguage>("school_language_analytics");
+}
+
 // null means "couldn't read", which the dashboards render as an honest
 // message. The RPCs are role-gated and return nothing at all to a caller
 // without the right role, so null is also what a wrong-role request produces
 // — the page never has to decide whether it is allowed to see this.
-type AnalyticsFn = "teacher_analytics" | "school_analytics" | "teacher_learning_analytics" | "school_learning_analytics";
+type AnalyticsFn =
+  | "teacher_analytics"
+  | "school_analytics"
+  | "teacher_learning_analytics"
+  | "school_learning_analytics"
+  | "school_language_analytics";
 
 async function callAnalytics<T>(fn: AnalyticsFn): Promise<T | null> {
   if (!hasSupabase()) return null;
