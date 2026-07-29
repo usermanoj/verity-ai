@@ -2,6 +2,8 @@ import Link from "next/link";
 import TeacherAnalyticsView from "@/components/analytics/TeacherAnalyticsView";
 import TeacherTabs from "@/components/teacher/TeacherTabs";
 import { getTeacherAnalytics, getTeacherLearning } from "@/lib/analytics";
+import StudentsView from "@/components/analytics/StudentsView";
+import { getStudentProgress } from "@/lib/analytics";
 import { requireRole } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 
@@ -15,7 +17,11 @@ export const dynamic = "force-dynamic";
 
 export default async function TeacherInsightsPage() {
   await requireRole("teacher", "/teacher/insights");
-  const [data, learning] = await Promise.all([getTeacherAnalytics(), getTeacherLearning()]);
+  const [data, learning, progress] = await Promise.all([
+    getTeacherAnalytics(),
+    getTeacherLearning(),
+    getStudentProgress(),
+  ]);
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
@@ -32,6 +38,13 @@ export default async function TeacherInsightsPage() {
       </p>
 
       <TeacherTabs />
+
+      {/* Students first. Coverage and difficulty describe the material; this
+          describes the children, and it is the only part of this page a
+          teacher can act on the same morning. */}
+      <div className="mb-5">
+        <StudentsView students={progress.students} now={progress.now} />
+      </div>
 
       {data ? (
         <TeacherAnalyticsView data={data} learning={learning} />

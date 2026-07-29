@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabase/server";
+import type { StudentProgress } from "@/lib/student-progress";
 import { hasSupabase } from "@/lib/supabase/config";
 
 // Reads the analytics RPCs. One call per dashboard, because a dashboard that
@@ -102,6 +103,28 @@ export type SchoolLanguage = {
 
 export async function getSchoolLanguage(): Promise<SchoolLanguage | null> {
   return callAnalytics<SchoolLanguage>("school_language_analytics");
+}
+
+// Per-student progress, plus the instant everything is measured against.
+//
+// `now` is stamped here rather than in the component: every row then compares
+// against the same moment, and the render stays pure — calling Date.now()
+// during render is what the compiler forbids.
+export async function getStudentProgress(): Promise<{ students: StudentProgress[]; now: number }> {
+  const now = Date.now();
+  if (!hasSupabase()) return { students: [], now };
+  try {
+    const supabase = await supabaseServer();
+    const { data, error } = await supabase.rpc("teacher_student_progress");
+    if (error) {
+      console.error("[analytics] student progress failed:", error);
+      return { students: [], now };
+    }
+    return { students: (data as unknown as StudentProgress[] | null) ?? [], now };
+  } catch (err) {
+    console.error("[analytics] student progress threw:", err);
+    return { students: [], now };
+  }
 }
 
 // null means "couldn't read", which the dashboards render as an honest

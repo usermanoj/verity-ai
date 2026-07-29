@@ -30,10 +30,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { questionId, answer, gradedResult } = (await req.json()) as {
+    const { questionId, answer, gradedResult, prompt, level } = (await req.json()) as {
       questionId: string;
       answer: string;
       gradedResult: GradeResult;
+      prompt?: string;
+      level?: string;
     };
 
     const supabase = await supabaseServer();
@@ -49,6 +51,13 @@ export async function POST(req: NextRequest) {
       answer,
       graded_result: gradedResult,
       graded_by: "rule",
+      // Snapshotted, because re-uploading a deck regenerates its questions
+      // and the old attempt is left pointing at nothing. 15 of the first 26
+      // attempts recorded were already unreadable that way — a child's answer
+      // is evidence about that child, and it must not become meaningless
+      // because a teacher tidied their uploads.
+      question_prompt: prompt?.slice(0, 500) ?? null,
+      question_level: level ?? null,
     });
 
     // The insert's result used to be discarded, so this route answered
