@@ -1,6 +1,7 @@
 import Link from "next/link";
 import SchoolAnalyticsView from "@/components/analytics/SchoolAnalyticsView";
-import { getSchoolAnalytics, getSchoolLearning } from "@/lib/analytics";
+import SchoolLanguageView from "@/components/analytics/SchoolLanguageView";
+import { getSchoolAnalytics, getSchoolLearning, getSchoolLanguage } from "@/lib/analytics";
 import { requireRole } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 
@@ -8,7 +9,11 @@ export const dynamic = "force-dynamic";
 
 export default async function PrincipalPage() {
   await requireRole("principal", "/principal");
-  const [data, learning] = await Promise.all([getSchoolAnalytics(), getSchoolLearning()]);
+  const [data, learning, language] = await Promise.all([
+    getSchoolAnalytics(),
+    getSchoolLearning(),
+    getSchoolLanguage(),
+  ]);
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
@@ -23,7 +28,20 @@ export default async function PrincipalPage() {
         Adoption across subjects and year groups, and where the curriculum is still thin.
       </p>
 
-      <div className="mt-8">
+      {/* Language support first: coverage and progress describe the material,
+          this describes the children — and it is the one section here that
+          names an action for this week. */}
+      <div className="mt-8 space-y-5">
+        {language ? (
+          <SchoolLanguageView data={language} scope="school" />
+        ) : (
+          <p className="text-sm text-[var(--muted)]">
+            Language support figures aren&apos;t available — this needs migration 0025.
+          </p>
+        )}
+      </div>
+
+      <div className="mt-5">
         {data ? (
           <SchoolAnalyticsView data={data} learning={learning} scope="school" />
         ) : (

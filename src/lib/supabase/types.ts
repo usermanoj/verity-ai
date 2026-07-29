@@ -561,6 +561,11 @@ export type Database = {
         Args: Record<string, never>;
         Returns: unknown;
       };
+      // School-wide language support, for a HOD or principal (0025).
+      school_language_analytics: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
       rotate_class_code: {
         Args: { p_class_id: string };
         Returns: unknown;
