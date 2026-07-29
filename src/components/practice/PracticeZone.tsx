@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { grade } from "@/lib/grade";
 import type { PracticeItem } from "@/data/practice-banks";
@@ -19,6 +19,22 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
   const [idx, setIdx] = useState(0);
   const [input, setInput] = useState("");
   const [result, setResult] = useState<ReturnType<typeof grade> | null>(null);
+
+  // Bring the marking into view.
+  //
+  // The feedback renders BELOW the Check button, and on a question with four
+  // matching rows that puts it off the bottom of the screen — a student
+  // presses Check, nothing appears to happen, and they have to think to
+  // scroll. The one moment they are most invested is the one where the app
+  // went quiet.
+  const feedbackRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!result) return;
+    // "nearest" moves the page as little as possible: if the panel is already
+    // visible nothing happens at all, which matters because this fires on
+    // every Check, including the ones that need no scrolling.
+    feedbackRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [result]);
   const [streak, setStreak] = useState(0);
   const [wrong, setWrong] = useState(0);
   // Attempts at the CURRENT question, and whether the answer has been asked
@@ -162,6 +178,7 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
       <AnimatePresence>
         {result && (
           <motion.div
+            ref={feedbackRef}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
