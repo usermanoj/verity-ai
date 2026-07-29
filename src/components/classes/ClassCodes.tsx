@@ -11,10 +11,10 @@ export type ClassCode = {
   academicYear: string;
   code: string | null;
   students: number;
-  // False when no approved, non-superseded document reaches this section —
-  // its students open the app to an empty page. Optional so an older cached
-  // response renders without a warning rather than a wrong one.
-  hasMaterial?: boolean;
+  // Titles of the approved, current documents that reach this section.
+  // Optional so a response from before migration 0027 renders without a
+  // warning rather than a wrong one.
+  materials?: string[];
 };
 
 // The teacher's half of enrolment: one code per section, read out once.
@@ -109,35 +109,41 @@ export default function ClassCodes({
     <div className="space-y-3">
       {error && <p className="text-sm text-[var(--warn)]">{error}</p>}
 
-      {rows.map((row) => (
+      {rows.map((row) => {
+        const materials = row.materials ?? [];
+        return (
         <div
           key={row.classId}
           className="flex flex-wrap items-center gap-4 rounded-2xl border border-[var(--border)] p-4"
         >
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">
-                {row.grade} {row.subject} · {row.section}
-              </span>
-              {/* A section with students and nothing to read is invisible
-                  everywhere else: the student gets an empty page they cannot
-                  diagnose, and the teacher gets a join code that looks like it
-                  worked. It is loudest here, because this is where the code is
-                  handed out. */}
-              {row.hasMaterial === false && row.students > 0 && (
-                <span
-                  title="These students have joined but no approved document reaches this section — they open the app to an empty page."
-                  className="rounded-full border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.12)] px-2 py-0.5 text-[11px] text-[#fcd34d]"
-                >
-                  ⚠ no material — students see nothing
-                </span>
-              )}
-              {row.hasMaterial === false && row.students === 0 && (
-                <span className="text-[11px] text-[var(--muted)]">no material yet</span>
-              )}
+            <div className="font-medium">
+              {row.grade} {row.subject} · {row.section}
             </div>
             <div className="text-xs text-[var(--muted)]">
               {row.academicYear} · {row.students} student{row.students === 1 ? "" : "s"} joined
+            </div>
+
+            {/* What actually reaches this section, by name.
+                A warning that only appears when something is wrong teaches
+                nobody where things are: looking at "7C" there was no way to
+                know that is where the Magnets deck went. Listing what a
+                section HAS is what makes its absence mean something. */}
+            <div className="mt-1.5 text-xs">
+              {materials.length > 0 ? (
+                <span className="text-[var(--muted)]">
+                  📘 {materials.join(" · ")}
+                </span>
+              ) : row.students > 0 ? (
+                <span
+                  title="These students have joined but no approved document reaches this section — they open the app to an empty page."
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[rgba(251,191,36,0.35)] bg-[rgba(251,191,36,0.12)] px-2 py-1 text-[11px] text-[#fcd34d]"
+                >
+                  ⚠ No material — these students see an empty page
+                </span>
+              ) : (
+                <span className="text-[var(--muted)] opacity-70">No material yet</span>
+              )}
             </div>
           </div>
 
@@ -188,7 +194,8 @@ export default function ClassCodes({
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       <p className="text-xs text-[var(--muted)]">
         Students sign in with their school account, then enter this code once. It places them in this section — it is
