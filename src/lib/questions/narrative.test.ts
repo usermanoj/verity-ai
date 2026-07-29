@@ -53,6 +53,14 @@ describe("isNarrativeRecall — questions it must drop", () => {
     ).toBe(true);
   });
 
+  it("drops a fill-in-the-blank whose blank IS the date", () => {
+    // The shape that defeats every other rule: no date in the prompt, because
+    // it has been removed, and none in the answer, which is a bare ordinal.
+    // A live generation run produced two of these.
+    expect(isNarrativeRecall("The Chinese wrote about magnetism in the ____ century BC.", fill("fourth"))).toBe(true);
+    expect(isNarrativeRecall("The compass was not used for navigation until the ____ century in China.", fill("11th"))).toBe(true);
+  });
+
   it("drops a century spelled out as a word", () => {
     // Also from the bank: "in the first century" is the same question as
     // "in the 1st century", and only the second was being caught.

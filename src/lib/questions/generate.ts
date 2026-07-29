@@ -84,6 +84,8 @@ const SYSTEM_PROMPT = [
   "  · Never ask who discovered, invented, named or first described something.",
   "  · Never ask in what year, century or era something happened, and never make a date the answer.",
   "  · Never make a person, a place, a country or a civilisation the answer to a question.",
+  "  · Never ask when something came into use, was first written about, or was first used somewhere.",
+  "  · Never frame a question around what a historical figure or people said, wrote, described or did. If the science underneath is worth testing, ask it directly: \"A lodestone attracts a ____.\" — not \"What did the Chinese describe a lodestone attracting?\". The second tests whether the student followed the story.",
   "  · These facts are the easiest thing in a section to turn into questions and the least worth asking. A student who cannot name the discoverer still understands the physics — and for someone reading in a second language, an unfamiliar proper noun is difficulty that teaches nothing.",
   "",
   "If a section is ENTIRELY narrative — a history, an anecdote, a scene-setting introduction with no explanation in it — return an EMPTY list of questions. That is the correct answer for material with nothing to test, and it is expected. Do not pad the set with names and dates to reach five, and do not stretch a single passing scientific remark into seven questions.",

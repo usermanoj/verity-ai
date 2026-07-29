@@ -71,6 +71,14 @@ const DATE_ANSWER = [
   new RegExp(`\\b(?:${CENTURY_WORD})\\s+century\\b`, "i"),
   /\b\d{1,4}\s*(?:BCE|BC|AD|CE)\b/,
   /\b(?:circa|c\.)\s*\d{3,4}\b/i,
+  // The date question that defeats every rule above: the date is the BLANK.
+  //
+  // "The Chinese wrote about magnetism in the ____ century BC." carries no
+  // date in the prompt (it has been removed) and none in the answer, which is
+  // the bare word "fourth". A live generation run produced two of these, so
+  // this is the shape that actually gets through rather than a hypothetical.
+  /_{2,}\s*(?:century|centuries|BCE|BC|AD|CE)\b/i,
+  /\b(?:century|year)\s+_{2,}/i,
 ];
 
 /**
