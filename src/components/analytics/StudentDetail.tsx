@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { describeSpan, helpEffect, pacing, toSessions, type TimelineEvent } from "@/lib/timeline";
 
 // One student, in detail — the level the product has never had.
 //
@@ -25,7 +26,7 @@ export type TranscriptTurn = {
   topic: string | null;
 };
 
-type Detail = { allowed: boolean; wrong: WrongAnswer[]; transcript: TranscriptTurn[] };
+type Detail = { allowed: boolean; wrong: WrongAnswer[]; transcript: TranscriptTurn[]; events: TimelineEvent[] };
 
 export default function StudentDetail({
   studentId,
@@ -94,6 +95,7 @@ export default function StudentDetail({
 
         {detail?.allowed && (
           <div className="space-y-6">
+            <HowTheyWorked events={detail.events ?? []} />
             <section>
               <h3 className="mb-2 text-sm font-medium uppercase tracking-widest text-[var(--muted)]">
                 Got wrong · {detail.wrong.length}
@@ -154,6 +156,124 @@ export default function StudentDetail({
           </div>
         )}
       </aside>
+    </div>
+  );
+}
+
+// How they worked, rather than how much they got right.
+//
+// Accuracy says a child is at 31%. It does not say whether they sat for forty
+// minutes on Tuesday and asked for help four times, or fired off eight answers
+// in ninety seconds the night before — and those need opposite responses from a
+// teacher.
+//
+// Built from timestamps the app already stored. Nothing here is time-on-page:
+// a span is the distance between a child's first and last action in a sitting,
+// which is a floor on their presence and says nothing about their attention.
+function HowTheyWorked({ events }: { events: TimelineEvent[] }) {
+  const sessions = toSessions(events);
+  const help = helpEffect(events);
+  const pace = pacing(events);
+
+  if (sessions.length === 0) {
+    return (
+      <section>
+        <h3 className="mb-2 text-sm font-medium uppercase tracking-widest text-[var(--muted)]">How they worked</h3>
+        <p className="text-sm text-[var(--muted)]">Nothing recorded yet.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section>
+      <h3 className="mb-2 text-sm font-medium uppercase tracking-widest text-[var(--muted)]">
+        How they worked · {sessions.length} sitting{sessions.length === 1 ? "" : "s"}
+      </h3>
+
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {/* The measure this product exists to justify: did asking for help make
+            the next answer right? Shown as a plain fraction, never a rate — a
+            student asks for help on the questions they find hard, so the aided
+            figure being lower is expected and a percentage would invite the
+            wrong comparison. */}
+        <Stat
+          label="Right after asking"
+          value={help.helped > 0 ? `${help.correctAfterHelp} of ${help.helped}` : "—"}
+          note={help.helped > 0 ? "answers that followed a request for help" : "hasn't asked then answered yet"}
+        />
+        <Stat
+          label="Right without help"
+          value={help.unaided > 0 ? `${help.unaidedCorrect} of ${help.unaided}` : "—"}
+          note="answered cold"
+        />
+        <Stat
+          label="Typical pause"
+          value={pace.medianMs === null ? "—" : describeSpan(pace.medianMs)}
+          note={
+            pace.rushed > 0
+              ? `${pace.rushed} answered in under 10 seconds`
+              : pace.measured > 0
+                ? "before each answer"
+                : "not enough answers to say"
+          }
+        />
+      </div>
+
+      <div className="space-y-2">
+        {[...sessions].reverse().map((session) => (
+          <details key={session.startedAt} className="rounded-2xl border border-[var(--border)] p-3">
+            <summary className="cursor-pointer text-sm">
+              <span className="font-medium">
+                {new Date(session.startedAt).toLocaleString(undefined, {
+                  weekday: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+              <span className="ml-2 text-xs text-[var(--muted)]">
+                {session.spanMs > 0 ? `${describeSpan(session.spanMs)} · ` : ""}
+                {session.answers} answered, {session.asks} asked
+              </span>
+            </summary>
+
+            {/* Oldest first inside a sitting, because a sitting is read
+                forwards — the point is the order things happened in. */}
+            <ol className="mt-3 space-y-1.5 border-l border-[var(--border)] pl-3">
+              {session.events.map((e, i) => (
+                <li key={i} className="text-xs">
+                  <span className="mr-2 tabular-nums text-[var(--muted)]">
+                    {new Date(e.at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  {e.kind === "ask" ? (
+                    <>
+                      <span className="text-[var(--brand2)]">{e.intent ?? "asked"}</span>
+                      <span className="ml-2 text-[var(--muted)]">{e.label}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={e.correct ? "text-[var(--good)]" : "text-[#fca5a5]"}>
+                        {e.correct ? "✓" : "✗"}
+                      </span>
+                      <span className="ml-2">{e.section ?? "—"}</span>
+                      {e.label && <span className="ml-2 text-[var(--muted)]">{e.label.slice(0, 60)}</span>}
+                    </>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Stat({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] p-3">
+      <div className="text-[11px] uppercase tracking-wide text-[var(--muted)]">{label}</div>
+      <div className="mt-0.5 text-lg font-semibold tabular-nums">{value}</div>
+      <div className="mt-0.5 text-[11px] leading-tight text-[var(--muted)]">{note}</div>
     </div>
   );
 }

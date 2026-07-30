@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
 import { getCurrentAppUser } from "@/lib/auth";
 import { atLeast } from "@/lib/roles";
+import { reportError } from "@/lib/errors/report";
 
 export const runtime = "nodejs";
 
@@ -24,12 +25,23 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   try {
     const supabase = await supabaseServer();
-    const { data, error } = await supabase.rpc("teacher_student_detail", { p_student_id: id });
-    if (error) {
-      console.error("[api/students] detail lookup failed:", error);
+    // Both in one round trip. The panel opens on a click and a second
+    // sequential request would be visible as a stutter.
+    const [detail, timeline] = await Promise.all([
+      supabase.rpc("teacher_student_detail", { p_student_id: id }),
+      supabase.rpc("teacher_student_timeline", { p_student_id: id }),
+    ]);
+    if (detail.error) {
+      await reportError("analytics", detail.error, "student detail lookup failed");
       return NextResponse.json({ error: "lookup_failed" }, { status: 500 });
     }
-    return NextResponse.json(data);
+    // The timeline failing must not cost a teacher the wrong answers and the
+    // transcript, which are the older and more important half of this panel.
+    // Reported, then the panel renders without it.
+    if (timeline.error) await reportError("analytics", timeline.error, "student timeline lookup failed");
+
+    const events = timeline.error ? [] : ((timeline.data as { events?: unknown[] } | null)?.events ?? []);
+    return NextResponse.json({ ...(detail.data as object), events });
   } catch (err) {
     console.error("[api/students] threw:", err);
     return NextResponse.json({ error: "lookup_failed" }, { status: 500 });

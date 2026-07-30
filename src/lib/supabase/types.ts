@@ -629,6 +629,11 @@ export type Database = {
         Args: Record<string, never>;
         Returns: unknown;
       };
+      // One student's answers and requests, interleaved in time (0037).
+      teacher_student_timeline: {
+        Args: { p_student_id: string };
+        Returns: unknown;
+      };
       teacher_student_detail: {
         Args: { p_student_id: string };
         Returns: unknown;
