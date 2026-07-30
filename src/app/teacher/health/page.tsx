@@ -3,6 +3,7 @@ import SessionBadge from "@/components/SessionBadge";
 import { requireAtLeast } from "@/lib/auth";
 import { getRecordedErrors } from "@/lib/errors/read";
 import { Panel } from "@/components/analytics/charts";
+import { bootstrapCount } from "@/lib/bootstrap-staff";
 
 // What has gone wrong, where a person can see it.
 //
@@ -50,6 +51,22 @@ export default async function TeacherHealthPage() {
       </div>
 
       <TeacherTabs />
+
+      {/* Configuration, not a fault — so it belongs here as information rather
+          than in the error list. This exists because BOOTSTRAP_PRINCIPAL_EMAILS
+          failing is completely silent: nothing throws, nobody is granted
+          anything, and the only symptom is a person who signs in and is still a
+          teacher. Vercel scopes variables per environment, so "set" and "set for
+          production" are different things and only one of them works.
+
+          The COUNT, never the addresses. This page is visible to every teacher,
+          and who the school's emergency principals are is not their business. */}
+      <div className="mb-6 rounded-2xl border border-[var(--border)] px-4 py-3 text-xs text-[var(--muted)]">
+        <span className="font-medium text-[var(--text)]">Setup · </span>
+        {bootstrapCount() > 0
+          ? `BOOTSTRAP_PRINCIPAL_EMAILS names ${bootstrapCount()} address${bootstrapCount() === 1 ? "" : "es"} in this deployment. Anyone on it becomes a principal at their next sign-in.`
+          : "BOOTSTRAP_PRINCIPAL_EMAILS is not set in this deployment, so no one is granted principal automatically. If you set it and this still says otherwise, check it is scoped to Production and that the app has been redeployed since."}
+      </div>
 
       <Panel
         title="Recorded problems"

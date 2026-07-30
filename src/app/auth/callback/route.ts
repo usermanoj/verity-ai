@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabaseAdmin, supabaseAdmin } from "@/lib/supabase/admin";
 import { resolveSchoolId } from "@/lib/school";
-import { isBootstrapPrincipal } from "@/lib/bootstrap-staff";
+import { isBootstrapPrincipal, bootstrapConfigNote, SET_BUT_EMPTY } from "@/lib/bootstrap-staff";
 import { reportError } from "@/lib/errors/report";
 
 export async function GET(req: NextRequest) {
@@ -95,6 +95,18 @@ export async function GET(req: NextRequest) {
       // A row is only INSERTED when there is none, so a brand-new school's
       // first principal still appears on the staff page rather than being
       // invisible to it.
+      // Reported only for a value that is SET and says nothing — an
+      // unambiguous misconfiguration that is otherwise completely silent.
+      //
+      // Not reported when it is simply unset: that is the correct steady state
+      // once a school has its own principal, and an error row that never goes
+      // away is how a health page stops being read. Whether it is set at all is
+      // shown on /teacher/health instead, where it is information rather than a
+      // fault.
+      if (bootstrapConfigNote() === SET_BUT_EMPTY) {
+        await reportError("auth", new Error(SET_BUT_EMPTY), "no bootstrap principal could be granted");
+      }
+
       if (isBootstrapPrincipal(email)) {
         role = "principal";
         isStaffGrant = true;
