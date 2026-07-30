@@ -4,6 +4,9 @@ import { contentRepo } from "@/lib/content-repo";
 import { describeIssues, hasBlockingIssue } from "@/lib/translate/checks";
 import { translatePassage } from "@/lib/translate/translate";
 import { lookupTranslation, rememberTranslation } from "@/lib/translate/memory";
+import { getCurrentAppUser } from "@/lib/auth";
+import { hasSupabase } from "@/lib/supabase/config";
+import { claimAiCall } from "@/lib/ai-usage";
 
 export const runtime = "nodejs";
 
@@ -22,6 +25,24 @@ export async function POST(req: NextRequest) {
     // regardless of the middleware's rate limit.
     if (!text || text.length > MAX_TEXT_LEN) {
       return NextResponse.json({ translation: "Invalid request.", error: true }, { status: 400 });
+    }
+
+    // This endpoint had NO authentication. With live credentials set it was an
+    // open translator on the public internet: anyone could post two thousand
+    // characters and have us pay for the Chinese. Only the signed-in student
+    // panel has ever called it, so requiring an account breaks nothing.
+    //
+    // Skipped without Supabase, so a preview deployment stays in demo mode
+    // rather than refusing every request it cannot authorise — the same rule
+    // /api/tutor applies.
+    if (hasSupabase()) {
+      const user = await getCurrentAppUser();
+      if (!user) {
+        return NextResponse.json(
+          { translation: "Please sign in to use translation.", error: true },
+          { status: 401 },
+        );
+      }
     }
 
     const lang = target || "Simplified Chinese (简体中文)";
@@ -59,6 +80,17 @@ export async function POST(req: NextRequest) {
         origin: remembered.origin,
         issues: [],
       });
+    }
+
+    // Counted only now — after the memory lookup missed, so a real model call
+    // is certain. A remembered translation costs nothing and must not spend a
+    // student's allowance, or the cache stops being a kindness and becomes a
+    // tax on rereading the same passage.
+    if (hasSupabase()) {
+      const { verdict } = await claimAiCall("translate");
+      if (!verdict.allowed) {
+        return NextResponse.json({ translation: verdict.message, error: true }, { status: 429 });
+      }
     }
 
     // This document's own terms, so 磁场 is used for "magnetic field" every

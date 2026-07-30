@@ -41,6 +41,14 @@ export type Database = {
         };
         Relationships: [];
       };
+      // Per-person, per-day AI call counter (0032). Written only through
+      // claim_ai_call; nothing reads it through RLS.
+      ai_usage: {
+        Row: { user_id: string; day: string; kind: string; calls: number };
+        Insert: { user_id: string; day: string; kind: string; calls?: number };
+        Update: { calls?: number };
+        Relationships: [];
+      };
       practice_attempts: {
         Row: {
           id: string;
@@ -589,6 +597,12 @@ export type Database = {
       };
       teacher_student_detail: {
         Args: { p_student_id: string };
+        Returns: unknown;
+      };
+      // Counts one AI call against the caller's day and reports the totals
+      // that decide whether it may proceed (0032).
+      claim_ai_call: {
+        Args: { p_kind: string };
         Returns: unknown;
       };
       // What the class is getting wrong, and what they keep asking (0030).
