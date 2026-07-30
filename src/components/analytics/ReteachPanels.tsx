@@ -34,7 +34,7 @@ export function ConceptFailurePanel({ outcomes }: { outcomes: QuestionOutcome[] 
       ) : (
         <div className="space-y-3">
           {concepts.map((c) => (
-            <div key={c.chunkId} className="rounded-2xl border border-[var(--border)] p-4">
+            <div key={c.key} className="rounded-2xl border border-[var(--border)] p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span className="font-medium">{c.heading}</span>
                 <span className="text-sm tabular-nums text-[#fca5a5]">
