@@ -108,12 +108,13 @@ export function adminClient(env = loadEnv()): SupabaseClient {
  */
 export async function asUser(email: string, env = loadEnv()): Promise<SupabaseClient> {
   const admin = adminClient(env);
-  const link = must(
-    await admin.auth.admin.generateLink({ type: "magiclink", email }),
-    `generateLink(${email})`,
-  ) as { properties?: { hashed_token?: string } };
+  // Not must(): the auth API returns a different shape from PostgREST — on
+  // failure `data` is an object of nulls rather than null itself, so the guard
+  // that catches a missing table would pass straight through here.
+  const link = await admin.auth.admin.generateLink({ type: "magiclink", email });
+  if (link.error) throw new Error(`generateLink(${email}) failed: ${link.error.message}`);
 
-  const token = link.properties?.hashed_token;
+  const token = link.data?.properties?.hashed_token;
   if (!token) throw new Error(`No sign-in token for ${email} — is that address a real account?`);
 
   const client = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
