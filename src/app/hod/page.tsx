@@ -24,6 +24,13 @@ export default async function HodPage() {
         <Link href="/staff" className="ml-4 text-sm text-[var(--muted)] hover:text-[var(--text)]">
           Staff →
         </Link>
+        {/* Senior staff often teach as well, and this page has no answer for
+            "how is MY class doing" — it is deliberately school-wide. Without
+            this link the teaching view was reachable only by typing the URL,
+            which is the same as not existing. */}
+        <Link href="/teacher" className="ml-4 text-sm text-[var(--muted)] hover:text-[var(--text)]">
+          Your teaching →
+        </Link>
         <SessionBadge />
       </div>
 

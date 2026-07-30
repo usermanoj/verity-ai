@@ -4,6 +4,7 @@ import { requireAtLeast } from "@/lib/auth";
 import { getRecordedErrors } from "@/lib/errors/read";
 import { Panel } from "@/components/analytics/charts";
 import { bootstrapCount } from "@/lib/bootstrap-staff";
+import { seniorHomeFor } from "@/lib/roles";
 
 // What has gone wrong, where a person can see it.
 //
@@ -33,7 +34,7 @@ const AREA_MEANING: Record<string, string> = {
 };
 
 export default async function TeacherHealthPage() {
-  await requireAtLeast("teacher", "/teacher/health");
+  const viewer = await requireAtLeast("teacher", "/teacher/health");
   const errors = await getRecordedErrors();
   const total = errors.reduce((n, e) => n + e.count, 0);
 
@@ -50,7 +51,7 @@ export default async function TeacherHealthPage() {
         <SessionBadge />
       </div>
 
-      <TeacherTabs />
+      <TeacherTabs seniorHome={seniorHomeFor(viewer?.role)} />
 
       {/* Configuration, not a fault — so it belongs here as information rather
           than in the error list. This exists because BOOTSTRAP_PRINCIPAL_EMAILS

@@ -37,3 +37,15 @@ export function atLeast(actual: string | null | undefined, minimum: AppRole): bo
 export function isStaff(role: string | null | undefined): boolean {
   return atLeast(role, "teacher");
 }
+
+/**
+ * The dashboard a viewer belongs to above the teaching area, or null.
+ *
+ * A plain teacher has none — this IS their home — and passing one would offer
+ * them a page that redirects straight back.
+ */
+export function seniorHomeFor(role: string | null | undefined): string | null {
+  if (role === "principal") return "/principal";
+  if (role === "hod") return "/hod";
+  return null;
+}

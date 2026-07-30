@@ -9,6 +9,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
 import { requireAtLeast } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
+import { seniorHomeFor } from "@/lib/roles";
 
 // Auth-gated: never prerender. The auth helpers read cookies at request
 // time, but bail out early when Supabase env vars are absent — so a build
@@ -17,7 +18,7 @@ import SessionBadge from "@/components/SessionBadge";
 export const dynamic = "force-dynamic";
 
 export default async function TeacherPage() {
-  await requireAtLeast("teacher", "/teacher");
+  const viewer = await requireAtLeast("teacher", "/teacher");
   const [data, material, codes] = await Promise.all([
     getTeacherAnalytics(),
     getMaterial(),
@@ -53,7 +54,7 @@ export default async function TeacherPage() {
         What your students can see, and what is waiting on you.
       </p>
 
-      <TeacherTabs />
+      <TeacherTabs seniorHome={seniorHomeFor(viewer?.role)} />
 
       <div className="space-y-5">
         {stranded.length > 0 && (

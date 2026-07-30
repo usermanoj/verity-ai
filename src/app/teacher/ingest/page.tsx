@@ -4,7 +4,7 @@ import { hasSupabase } from "@/lib/supabase/config";
 import { getTeacherIngestState } from "@/lib/ingestion/documents";
 import IngestPanel from "@/components/teacher/IngestPanel";
 import TeacherTabs from "@/components/teacher/TeacherTabs";
-import { atLeast } from "@/lib/roles";
+import { atLeast, seniorHomeFor } from "@/lib/roles";
 
 // Auth-gated: never prerender. The auth helpers read cookies at request
 // time, but bail out early when Supabase env vars are absent — so a build
@@ -39,7 +39,7 @@ export default async function TeacherIngestPage() {
   if (!atLeast(user.role, "teacher")) redirect("/");
 
   return (
-    <Shell>
+    <Shell seniorHome={seniorHomeFor(user.role)}>
       <div className="mt-8">
         <IngestPanel initialDocuments={documents} />
       </div>
@@ -47,7 +47,7 @@ export default async function TeacherIngestPage() {
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, seniorHome }: { children: React.ReactNode; seniorHome?: string | null }) {
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
@@ -63,7 +63,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
       {/* Upload is one of the four teacher screens, not a dead end reached
           only by a back-link. */}
-      <TeacherTabs />
+      <TeacherTabs seniorHome={seniorHome} />
 
       {children}
     </main>

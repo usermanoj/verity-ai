@@ -7,6 +7,7 @@ import { requireAtLeast } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
+import { seniorHomeFor } from "@/lib/roles";
 
 // Review and correct the Chinese this product generates.
 //
@@ -22,7 +23,7 @@ export default async function TeacherLanguagePage({
 }: {
   searchParams: Promise<{ doc?: string }>;
 }) {
-  await requireAtLeast("teacher", "/teacher/language");
+  const viewer = await requireAtLeast("teacher", "/teacher/language");
   const { doc } = await searchParams;
 
   const [documents, students] = await Promise.all([getDocuments(), getStudents()]);
@@ -43,7 +44,7 @@ export default async function TeacherLanguagePage({
         The vocabulary and translations your students see, and your corrections to them.
       </p>
 
-      <TeacherTabs />
+      <TeacherTabs seniorHome={seniorHomeFor(viewer?.role)} />
 
       {/* Reading levels first: it is per student, it applies to every lesson,
           and it is the one thing on this page a teacher knows the answer to
