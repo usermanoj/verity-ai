@@ -55,6 +55,15 @@ export type TeacherLearning = {
     enrolled: number;
     active: number;
   }[];
+  /**
+   * Students enrolled in more than one section that receives the same material.
+   *
+   * Their answers are counted ONCE, in whichever of those sections sorts first,
+   * so the section rows add up to the total. Named rather than counted because
+   * the arithmetic needs explaining and "which student" is the actionable part
+   * — usually a duplicated enrolment or a deck assigned too widely.
+   */
+  sharedStudents: { name: string; sections: string[] }[];
   hardestTopics: HardTopic[];
   students: { name: string; attempts: number; correct: number }[];
   assistant: AssistantUse;
