@@ -18,7 +18,12 @@ export default async function PrincipalPage() {
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <Link href="/" className="text-sm text-[var(--muted)] hover:text-[var(--text)]">← Home</Link>
+        <Link href="/" className="text-sm text-[var(--muted)] hover:text-[var(--text)]">← Home</Link>
+        {/* The staff list was SQL-only until 0034, which is what made this
+            impossible to hand to a school. It needs to be reachable. */}
+        <Link href="/staff" className="ml-4 text-sm text-[var(--muted)] hover:text-[var(--text)]">
+          Staff →
+        </Link>
         <SessionBadge />
       </div>
 

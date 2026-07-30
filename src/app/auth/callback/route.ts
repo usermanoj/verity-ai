@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabaseAdmin, supabaseAdmin } from "@/lib/supabase/admin";
 import { resolveSchoolId } from "@/lib/school";
+import { isBootstrapPrincipal } from "@/lib/bootstrap-staff";
+import { reportError } from "@/lib/errors/report";
 
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = req.nextUrl;
@@ -59,16 +61,43 @@ export async function GET(req: NextRequest) {
     let role: "student" | "teacher" | "hod" | "principal" = "student";
     let schoolId = defaultSchoolId;
     let isStaffGrant = false;
+    // A withdrawn grant must actually take effect. Previously revocation marked
+    // a row and nothing else, so a removed teacher kept their role forever.
+    let isRevoked = false;
     if (email) {
       const { data: grant } = await admin
         .from("staff_allowlist")
-        .select("role, school_id")
+        .select("role, school_id, revoked_at")
         .eq("email", email)
         .maybeSingle();
-      if (grant) {
+      if (grant && !grant.revoked_at) {
         role = grant.role;
         schoolId = grant.school_id;
         isStaffGrant = true;
+      } else if (grant?.revoked_at) {
+        isRevoked = true;
+        schoolId = grant.school_id;
+      }
+
+      // The loop-breaker: a brand-new school's staff list can only be managed by
+      // staff, so without this the first principal has to be inserted by hand.
+      // Checked AFTER the allowlist and allowed to win, so removing an address
+      // from the env var is not silently overridden by a stale row — and the row
+      // is recorded as 'bootstrap' so the interface can say where it came from
+      // and refuse to "revoke" something an env var controls.
+      if (isBootstrapPrincipal(email)) {
+        role = "principal";
+        isStaffGrant = true;
+        isRevoked = false;
+        if (schoolId) {
+          const { error: upsertError } = await admin
+            .from("staff_allowlist")
+            .upsert(
+              { email, school_id: schoolId, role: "principal", source: "bootstrap", revoked_at: null, revoked_by: null },
+              { onConflict: "email" },
+            );
+          if (upsertError) await reportError("auth", upsertError, "could not record a bootstrap principal");
+        }
       }
     }
 
@@ -95,12 +124,39 @@ export async function GET(req: NextRequest) {
       // but never downgrade a user who isn't on the allowlist — their role
       // may have been set deliberately outside it.
       await admin.from("users").update({ role }).eq("id", data.user.id);
+    } else if (isRevoked && existing.role !== "student") {
+      // An EXPLICITLY withdrawn grant is the one case where downgrading is
+      // right, and it is the difference between revocation meaning something
+      // and revocation being a note in a table. Narrow on purpose: only a
+      // revoked row does this, so anyone promoted deliberately outside the
+      // allowlist keeps what they were given.
+      //
+      // revoke_staff already drops the role at the moment of withdrawal; this
+      // catches the person who was mid-session when it happened.
+      effectiveRole = "student";
+      await admin.from("users").update({ role: "student" }).eq("id", data.user.id);
     } else {
       // The ordinary case, and the one that matters most: someone who already
       // has a row signing in again. Their existing role is the answer, and
       // missing this branch would have sent every returning teacher to the
       // student page.
       effectiveRole = existing.role;
+    }
+  }
+
+  // Mark the invitation as taken up, so the staff page can tell a working
+  // grant from one sent to an address nobody owns. Without this every row reads
+  // "not signed in yet" forever, and a typo in an address sits there looking
+  // exactly like a colleague who simply has not logged in.
+  if (hasSupabaseAdmin() && effectiveRole && effectiveRole !== "student") {
+    const email = data.user.email?.toLowerCase();
+    if (email) {
+      const { error: claimError } = await supabaseAdmin()
+        .from("staff_allowlist")
+        .update({ claimed_at: new Date().toISOString(), claimed_by: data.user.id })
+        .eq("email", email)
+        .is("claimed_at", null);
+      if (claimError) await reportError("auth", claimError, "could not mark a staff invitation as taken up");
     }
   }
 
