@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bootstrapPrincipals, isBootstrapPrincipal } from "./bootstrap-staff";
+import { bootstrapConfigNote, bootstrapPrincipals, isBootstrapPrincipal } from "./bootstrap-staff";
 
 // This variable is typed into a Vercel dashboard field by a person, and it is
 // the only thing standing between "a school can appoint its first principal"
@@ -67,5 +67,34 @@ describe("isBootstrapPrincipal", () => {
 
   it("grants nobody when the variable is unset", () => {
     expect(isBootstrapPrincipal("head@school.edu.sg", "")).toBe(false);
+  });
+});
+
+describe("quotes and other things a dashboard field does to a value", () => {
+  it("strips surrounding quotes", () => {
+    // The failure that actually happened: a quoted value still contains an @,
+    // so it passes every check and matches nobody. Silent, and identical in
+    // appearance to the feature not working.
+    expect(bootstrapPrincipals('"head@school.edu"')).toEqual(new Set(["head@school.edu"]));
+    expect(bootstrapPrincipals("'head@school.edu'")).toEqual(new Set(["head@school.edu"]));
+    expect(isBootstrapPrincipal("head@school.edu", '"head@school.edu"')).toBe(true);
+  });
+
+  it("strips quotes around each entry in a list", () => {
+    expect(bootstrapPrincipals('"a@x.edu", "b@y.edu"')).toEqual(new Set(["a@x.edu", "b@y.edu"]));
+  });
+});
+
+describe("bootstrapConfigNote", () => {
+  it("says nothing when the value is usable", () => {
+    expect(bootstrapConfigNote("head@school.edu")).toBeNull();
+  });
+
+  it("distinguishes unset from set-but-useless", () => {
+    // Two different problems with two different fixes: one is "you haven't set
+    // it", the other is "you set it and it says nothing".
+    expect(bootstrapConfigNote(undefined)).toMatch(/not set/);
+    expect(bootstrapConfigNote("")).toMatch(/no usable address/);
+    expect(bootstrapConfigNote("the head teacher")).toMatch(/no usable address/);
   });
 });
