@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { streamText } from "ai";
 import { AI_PROVIDER, aiModel, gatewayFailover, GATEWAY_FALLBACK_MODELS, hasApiKey, cachedSystem } from "@/lib/ai";
 import { hasLangfuse } from "@/lib/observability";
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
   const isStudent = viewer?.role === "student";
 
   if (!hasApiKey()) {
-    if (isStudent) void logEvent("tutor_message", { intent, topicId: topic, demo: true });
+    if (isStudent) after(() => logEvent("tutor_message", { intent, topicId: topic, demo: true }));
     const fb = await fallbackReply(topic, intent, question, turnNum, contextChunkId);
     const stream = new ReadableStream({
       start(controller) {
@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
   // already said — without this, "then?" / "what next?" has nothing to build on.
   const priorTurns = (history ?? []).map((h) => ({ role: h.role, content: h.content }));
 
-  if (isStudent) void logEvent("tutor_message", { intent, topicId: topic, demo: false });
+  if (isStudent) after(() => logEvent("tutor_message", { intent, topicId: topic, demo: false }));
 
   // Opened before streaming so the student's question is recorded even if the
   // model call then fails — a transcript that only keeps the exchanges that
@@ -183,9 +183,38 @@ export async function POST(req: NextRequest) {
   const conversationId = await conversationFor(viewer, topic);
   await logTurn(conversationId, "user", userText, intent);
 
+  // The assistant's turn is registered HERE, in request scope, and receives
+  // its text through a promise the stream resolves when it finishes.
+  //
+  // It cannot be registered inside the stream: those callbacks run after the
+  // response has been handed back, which is outside request scope, and after()
+  // must be called within it.
+  //
+  // The previous version called `void logTurn(...)` from the stream's finally
+  // block, reasoning that "the invocation stays alive for the stream, so this
+  // still runs — and if it doesn't, the reply was already delivered." The
+  // second half is the mistake: the reply reaching the student and the reply
+  // being RECORDED are different things, and the record is what a teacher
+  // reads. Observed in production — a turn written 2m09s late, flushed only
+  // when the next request thawed the instance. When a student stops asking,
+  // nothing thaws it and the last reply of the session is lost. Every sitting
+  // was losing its final exchange, which is also why "Asked about most"
+  // undercounted.
+  let settleTurn: (text: string) => void = () => {};
+  const assistantTurn = new Promise<string>((resolve) => {
+    settleTurn = resolve;
+  });
+  after(async () => {
+    const text = await assistantTurn;
+    await logTurn(conversationId, "assistant", text, intent, contextChunkId ? [contextChunkId] : []);
+  });
+
+  // Outside start(), so cancel() can resolve with whatever had arrived rather
+  // than discarding a half-finished reply the student did read.
+  let assistantText = "";
+
   const stream = new ReadableStream({
     async start(controller) {
-      let assistantText = "";
       // streamText does NOT throw when the provider fails — it reports through
       // onError and ends the stream empty. Without a handler the failure was
       // completely invisible: nothing in the logs, and a student staring at
@@ -241,17 +270,17 @@ export async function POST(req: NextRequest) {
         controller.enqueue(jsonLine({ type: "done", error: true }));
       } finally {
         controller.close();
-        // After close, so recording never delays the last token reaching the
-        // student. The invocation stays alive for the stream, so this still
-        // runs — and if it doesn't, the reply was already delivered.
-        void logTurn(
-          conversationId,
-          "assistant",
-          assistantText,
-          intent,
-          contextChunkId ? [contextChunkId] : [],
-        );
+        // Hands the text to the after() callback above. Resolving rather than
+        // writing here is what makes the write survive the invocation being
+        // suspended the moment it responds.
+        settleTurn(assistantText);
       }
+    },
+    // A student navigating away mid-reply still said something worth keeping,
+    // and an unresolved promise would leave the after() callback waiting for a
+    // stream that has gone. Resolving twice is harmless.
+    cancel() {
+      settleTurn(assistantText);
     },
   });
 
