@@ -3,6 +3,7 @@ import type { ClassCode } from "@/components/classes/ClassCodes";
 import { headers } from "next/headers";
 import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseServer } from "@/lib/supabase/server";
+import { reportError } from "@/lib/errors/report";
 
 // Lifted out of app/teacher/page.tsx when the dashboard was split into tabs,
 // so the Classes screen owns its own data and the Overview screen no longer
@@ -13,7 +14,10 @@ export async function getClassCodes(): Promise<ClassCode[]> {
     const supabase = await supabaseServer();
     const { data } = await supabase.rpc("teacher_class_codes");
     return (data as ClassCode[] | null) ?? [];
-  } catch {
+  } catch (err) {
+    // An empty list here renders as "you have no classes", which is a lie a
+    // teacher would act on. This is the same fault as the material list.
+    await reportError("analytics", err, "could not load class codes");
     return [];
   }
 }

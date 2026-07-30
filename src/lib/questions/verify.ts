@@ -2,6 +2,7 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import { aiModel, gatewayFailover, STRUCTURED_FALLBACK_MODELS, withRateLimitRetry } from "@/lib/ai";
 import type { GeneratedQuestion } from "./generate";
+import { reportError } from "@/lib/errors/report";
 
 // A second model pass that checks each question against the material it came
 // from, before a teacher is ever asked to approve it.
@@ -91,7 +92,11 @@ export async function verifyQuestions(
       // of a fault.
       return { question, ok: verdict ? verdict.ok : true, reason: verdict?.reason ?? "" };
     });
-  } catch {
+  } catch (err) {
+    // Fails open, as documented above: a checker that is down must not empty a
+    // teacher's question bank. Recorded because the failure mode is silent by
+    // design — the deck still fills, just unverified, and nobody would know.
+    await reportError("questions", err, "verification pass failed, questions passed through unchecked");
     return questions.map((question) => ({ question, ok: true, reason: "" }));
   }
 }

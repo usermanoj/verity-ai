@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
+import { reportError } from "@/lib/errors/report";
 
 // A student's reading level, as a property of the student.
 //
@@ -41,7 +42,10 @@ export async function getLanguagePref(userId: string | undefined): Promise<Langu
       level: isLevel(data.esl_level) ? data.esl_level : DEFAULT_PREF.level,
       chinese: data.esl_chinese === true,
     };
-  } catch {
+  } catch (err) {
+    // Falls back to the default, which silently undoes a teacher's per-student
+    // setting — so a child reading in Chinese would quietly stop.
+    await reportError("language", err, "could not read a student's language preference");
     return DEFAULT_PREF;
   }
 }
