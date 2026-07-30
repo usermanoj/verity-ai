@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { hasSupabase } from "@/lib/supabase/config";
 import { getTeacherIngestState } from "@/lib/ingestion/documents";
+import { atLeast } from "@/lib/roles";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ export async function GET() {
 
     // Identity came from auth.uid() inside the function, so a null user means
     // no valid session — not a lookup failure.
-    if (!user || user.role !== "teacher") {
+    if (!user || !atLeast(user.role, "teacher")) {
       return NextResponse.json({ error: "Only signed-in teachers can view this." }, { status: 403 });
     }
 

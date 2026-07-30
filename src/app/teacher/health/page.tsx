@@ -1,6 +1,6 @@
 import TeacherTabs from "@/components/teacher/TeacherTabs";
 import SessionBadge from "@/components/SessionBadge";
-import { requireRole } from "@/lib/auth";
+import { requireAtLeast } from "@/lib/auth";
 import { getRecordedErrors } from "@/lib/errors/read";
 import { Panel } from "@/components/analytics/charts";
 
@@ -32,7 +32,7 @@ const AREA_MEANING: Record<string, string> = {
 };
 
 export default async function TeacherHealthPage() {
-  await requireRole("teacher", "/teacher/health");
+  await requireAtLeast("teacher", "/teacher/health");
   const errors = await getRecordedErrors();
   const total = errors.reduce((n, e) => n + e.count, 0);
 

@@ -4,6 +4,7 @@ import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseServer } from "@/lib/supabase/server";
 import { generateQuestionsWorkflow } from "@/workflows/generate-questions";
+import { atLeast } from "@/lib/roles";
 
 export const runtime = "nodejs";
 
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest) {
   }
 
   const user = await getCurrentAppUser();
-  if (!user || user.role !== "teacher") {
+  if (!user || !atLeast(user.role, "teacher")) {
     return NextResponse.json({ error: "Only signed-in teachers can generate questions." }, { status: 403 });
   }
 

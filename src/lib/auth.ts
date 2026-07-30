@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { hasSupabase } from "./supabase/config";
 import { supabaseServer } from "./supabase/server";
+import { atLeast } from "@/lib/roles";
 
 export type AppRole = "student" | "teacher" | "hod" | "principal";
 
@@ -86,11 +87,22 @@ export async function requireSignedIn(currentPath: string): Promise<AppUser | nu
   return session.user;
 }
 
-export async function requireRole(role: AppRole, currentPath: string): Promise<AppUser | null> {
+/**
+ * Requires this role OR MORE SENIOR.
+ *
+ * Renamed from requireRole, and the rename is the point: the old name read as
+ * an equality test and was one, so a principal was turned away from a teacher's
+ * page for not being a teacher. That made the bootstrap principal a trap — the
+ * one person who has to set the system up was locked out of most of it the
+ * moment they became senior enough to manage it.
+ *
+ * The name now says what it does, so nobody reads a call site as "only".
+ */
+export async function requireAtLeast(role: AppRole, currentPath: string): Promise<AppUser | null> {
   if (!hasSupabase()) return null;
 
   const session = await readSession();
   if (session.kind !== "user") redirect(signInPath(session, currentPath));
-  if (session.user.role !== role) redirect("/");
+  if (!atLeast(session.user.role, role)) redirect("/");
   return session.user;
 }

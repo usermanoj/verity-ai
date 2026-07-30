@@ -7,7 +7,7 @@ import MaterialList, { relativeTime, type MaterialRow } from "@/components/teach
 import { Panel } from "@/components/analytics/charts";
 import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
-import { requireRole } from "@/lib/auth";
+import { requireAtLeast } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 
 // Auth-gated: never prerender. The auth helpers read cookies at request
@@ -17,7 +17,7 @@ import SessionBadge from "@/components/SessionBadge";
 export const dynamic = "force-dynamic";
 
 export default async function TeacherPage() {
-  await requireRole("teacher", "/teacher");
+  await requireAtLeast("teacher", "/teacher");
   const [data, material, codes] = await Promise.all([
     getTeacherAnalytics(),
     getMaterial(),

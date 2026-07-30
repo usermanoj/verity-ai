@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
 import { getCurrentAppUser } from "@/lib/auth";
 import { sourceHash, DEFAULT_TARGET_LANG } from "@/lib/translate/memory";
+import { atLeast } from "@/lib/roles";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
   // Same shape as every other teacher-only route here (api/classes/code,
   // api/ingest/chunks) rather than a new helper.
   const user = await getCurrentAppUser();
-  if (!user || user.role !== "teacher") {
+  if (!user || !atLeast(user.role, "teacher")) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

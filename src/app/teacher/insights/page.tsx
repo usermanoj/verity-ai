@@ -5,7 +5,7 @@ import { getTeacherAnalytics, getTeacherLearning } from "@/lib/analytics";
 import StudentsView from "@/components/analytics/StudentsView";
 import { getStudentProgress, getQuestionOutcomes, getAskedAbout } from "@/lib/analytics";
 import { ConceptFailurePanel, AskedAboutPanel } from "@/components/analytics/ReteachPanels";
-import { requireRole } from "@/lib/auth";
+import { requireAtLeast } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 
 // The analysis, on its own screen.
@@ -17,7 +17,7 @@ import SessionBadge from "@/components/SessionBadge";
 export const dynamic = "force-dynamic";
 
 export default async function TeacherInsightsPage() {
-  await requireRole("teacher", "/teacher/insights");
+  await requireAtLeast("teacher", "/teacher/insights");
   const [data, learning, progress, outcomes, asked] = await Promise.all([
     getTeacherAnalytics(),
     getTeacherLearning(),

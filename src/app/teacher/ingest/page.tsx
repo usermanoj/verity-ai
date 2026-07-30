@@ -4,6 +4,7 @@ import { hasSupabase } from "@/lib/supabase/config";
 import { getTeacherIngestState } from "@/lib/ingestion/documents";
 import IngestPanel from "@/components/teacher/IngestPanel";
 import TeacherTabs from "@/components/teacher/TeacherTabs";
+import { atLeast } from "@/lib/roles";
 
 // Auth-gated: never prerender. The auth helpers read cookies at request
 // time, but bail out early when Supabase env vars are absent — so a build
@@ -35,7 +36,7 @@ export default async function TeacherIngestPage() {
 
   const { user, documents } = await getTeacherIngestState();
   if (!user) redirect(`/login?next=${encodeURIComponent("/teacher/ingest")}`);
-  if (user.role !== "teacher") redirect("/");
+  if (!atLeast(user.role, "teacher")) redirect("/");
 
   return (
     <Shell>

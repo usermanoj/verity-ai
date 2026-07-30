@@ -81,22 +81,29 @@ export async function GET(req: NextRequest) {
 
       // The loop-breaker: a brand-new school's staff list can only be managed by
       // staff, so without this the first principal has to be inserted by hand.
-      // Checked AFTER the allowlist and allowed to win, so removing an address
-      // from the env var is not silently overridden by a stale row — and the row
-      // is recorded as 'bootstrap' so the interface can say where it came from
-      // and refuse to "revoke" something an env var controls.
+      // Checked AFTER the allowlist and allowed to win.
+      //
+      // It does NOT overwrite an existing row, and that is the whole design.
+      // The first version upserted role='principal', which quietly made the
+      // grant permanent: removing the address from the environment variable
+      // left a principal row behind, so the variable was not actually the
+      // control it claimed to be. Now the underlying grant is untouched —
+      // remove the address and the person reverts to whatever the allowlist
+      // says, which for an existing teacher is teacher and for nobody is
+      // nobody.
+      //
+      // A row is only INSERTED when there is none, so a brand-new school's
+      // first principal still appears on the staff page rather than being
+      // invisible to it.
       if (isBootstrapPrincipal(email)) {
         role = "principal";
         isStaffGrant = true;
         isRevoked = false;
-        if (schoolId) {
-          const { error: upsertError } = await admin
+        if (schoolId && !grant) {
+          const { error: insertError } = await admin
             .from("staff_allowlist")
-            .upsert(
-              { email, school_id: schoolId, role: "principal", source: "bootstrap", revoked_at: null, revoked_by: null },
-              { onConflict: "email" },
-            );
-          if (upsertError) await reportError("auth", upsertError, "could not record a bootstrap principal");
+            .insert({ email, school_id: schoolId, role: "principal", source: "bootstrap" });
+          if (insertError) await reportError("auth", insertError, "could not record a bootstrap principal");
         }
       }
     }
