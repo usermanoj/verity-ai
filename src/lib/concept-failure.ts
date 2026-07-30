@@ -145,16 +145,38 @@ export type AskedAbout = {
 // lesson did not land — before any assessment says so.
 export const REPEAT_THRESHOLD = 3;
 
+// What the SQL coalesces a missing title to (0030). Conversations logged before
+// 0026 began snapshotting topic_title, and whose document has since been
+// replaced, have no title left to recover — the name is gone, not hidden.
+//
+// The string is duplicated between here and the migration, which is a real if
+// small coupling. The alternative is emitting null from SQL and needing a
+// migration to change a display rule; a named constant and this comment were
+// judged the better trade.
+export const UNTITLED_LESSON = "Untitled lesson";
+
+function untitled(topic: string): boolean {
+  const t = topic.trim();
+  return t === "" || t === UNTITLED_LESSON;
+}
+
 /**
  * Lessons worth a second look, most-asked first.
  *
  * Keeps anything where somebody asked repeatedly even if the total is small:
  * one student stuck three times on a lesson nobody else touched is exactly
  * the signal that gets lost in a total.
+ *
+ * Drops lessons with no name, for the same reason as the evidence floor on
+ * concepts: a row a teacher cannot act on is worse than no row. On the real
+ * data the unnamed row carried the largest number on the page — 25 requests
+ * against the named lesson's 10 — so it read as a mystery lesson a child was
+ * badly stuck on, when it was really three old sittings whose deck has since
+ * been replaced. Reported by untitledLesson() rather than silently swallowed.
  */
 export function lessonsToRevisit(rows: AskedAbout[]): AskedAbout[] {
   return [...rows]
-    .filter((r) => r.presses > 0)
+    .filter((r) => r.presses > 0 && !untitled(r.topic))
     .sort(
       (a, b) =>
         b.repeatedStudents - a.repeatedStudents ||
@@ -162,4 +184,27 @@ export function lessonsToRevisit(rows: AskedAbout[]): AskedAbout[] {
         b.presses - a.presses ||
         a.topic.localeCompare(b.topic),
     );
+}
+
+/**
+ * The rolled-up row for lessons whose name is gone, or null if there is none.
+ *
+ * Exists so the panel can account for what it dropped. A list that quietly
+ * shrinks is the same failure as an accuracy figure computed over staff: the
+ * number on screen is right and the teacher's reading of it is wrong.
+ */
+export function untitledLesson(rows: AskedAbout[]): AskedAbout | null {
+  const hidden = rows.filter((r) => r.presses > 0 && untitled(r.topic));
+  if (hidden.length === 0) return null;
+
+  // Normally one row — the SQL groups by topic, so every untitled conversation
+  // has already collapsed into a single row. Summed anyway rather than taking
+  // the first, so a future grouping change cannot silently under-report.
+  return {
+    topic: UNTITLED_LESSON,
+    presses: hidden.reduce((n, r) => n + r.presses, 0),
+    students: Math.max(...hidden.map((r) => r.students)),
+    maxInOneSitting: Math.max(...hidden.map((r) => r.maxInOneSitting)),
+    repeatedStudents: Math.max(...hidden.map((r) => r.repeatedStudents)),
+  };
 }
