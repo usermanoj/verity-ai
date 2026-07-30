@@ -582,6 +582,12 @@ export type Database = {
       };
       // The dashboard's uploads list (migration 0022). SECURITY DEFINER and
       // scoped to the caller's own uploads.
+      // Change which of a teacher's classes a deck reaches (0038). Was
+      // write-once at upload until then.
+      teacher_set_document_sections: {
+        Args: { p_document_id: string; p_class_ids: string[] };
+        Returns: unknown;
+      };
       teacher_material_list: {
         Args: { p_limit?: number };
         Returns: unknown;

@@ -10,6 +10,7 @@ import { hasSupabase } from "@/lib/supabase/config";
 import { requireAtLeast } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 import { seniorHomeFor } from "@/lib/roles";
+import { reportError } from "@/lib/errors/report";
 
 // Auth-gated: never prerender. The auth helpers read cookies at request
 // time, but bail out early when Supabase env vars are absent — so a build
@@ -69,7 +70,16 @@ export default async function TeacherPage() {
         {data && <TeacherStats data={data} />}
 
         <Panel title="Your material" hint="Newest first — what you have uploaded, where it goes, and whether students can see it yet.">
-          <MaterialList rows={material} />
+          <MaterialList
+            rows={material}
+            classes={codes.map((c) => ({
+              classId: c.classId,
+              section: c.section,
+              subject: c.subject,
+              grade: c.grade,
+              students: c.students,
+            }))}
+          />
         </Panel>
       </div>
     </main>
@@ -95,6 +105,7 @@ type MaterialJson = {
   subject: string;
   grade: string;
   sections: string[];
+  classIds: string[];
 };
 
 async function getMaterial(): Promise<MaterialRow[]> {
@@ -103,7 +114,7 @@ async function getMaterial(): Promise<MaterialRow[]> {
     const supabase = await supabaseServer();
     const { data, error } = await supabase.rpc("teacher_material_list", { p_limit: 30 });
     if (error) {
-      console.error("[teacher] could not load material list:", error);
+      await reportError("analytics", error, "could not load the material list");
       return [];
     }
 
@@ -120,13 +131,14 @@ async function getMaterial(): Promise<MaterialRow[]> {
       subject: d.subject,
       grade: d.grade,
       sections: d.sections ?? [],
+      classIds: d.classIds ?? [],
       status: d.status,
       version: d.version ?? 1,
       age: relativeTime(d.created_at, now),
       uploadedAt: d.created_at,
     }));
   } catch (err) {
-    console.error("[teacher] material list threw:", err);
+    await reportError("analytics", err, "material list threw");
     return [];
   }
 }
