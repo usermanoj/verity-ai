@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
 import { getCurrentAppUser } from "@/lib/auth";
+import { atLeast } from "@/lib/roles";
 
 export const runtime = "nodejs";
 
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: data === true });
   }
 
-  if (user.role !== "teacher") {
+  if (!atLeast(user.role, "teacher")) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

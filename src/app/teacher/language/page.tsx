@@ -3,7 +3,7 @@ import TeacherTabs from "@/components/teacher/TeacherTabs";
 import LanguageReview, { type GlossaryRow, type TranslationRow } from "@/components/teacher/LanguageReview";
 import StudentLanguage, { type StudentRow } from "@/components/teacher/StudentLanguage";
 import { Panel } from "@/components/analytics/charts";
-import { requireRole } from "@/lib/auth";
+import { requireAtLeast } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
@@ -22,7 +22,7 @@ export default async function TeacherLanguagePage({
 }: {
   searchParams: Promise<{ doc?: string }>;
 }) {
-  await requireRole("teacher", "/teacher/language");
+  await requireAtLeast("teacher", "/teacher/language");
   const { doc } = await searchParams;
 
   const [documents, students] = await Promise.all([getDocuments(), getStudents()]);

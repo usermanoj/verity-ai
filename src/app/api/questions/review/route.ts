@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { atLeast } from "@/lib/roles";
 
 export const runtime = "nodejs";
 
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
   }
 
   const user = await getCurrentAppUser();
-  if (!user || user.role !== "teacher") {
+  if (!user || !atLeast(user.role, "teacher")) {
     return NextResponse.json({ error: "Only signed-in teachers can review." }, { status: 403 });
   }
 

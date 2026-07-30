@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { hasSupabase } from "@/lib/supabase/config";
 import { getCurrentAppUser } from "@/lib/auth";
+import { atLeast } from "@/lib/roles";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   if (!hasSupabase()) return NextResponse.json({ error: "not_configured" }, { status: 503 });
 
   const user = await getCurrentAppUser();
-  if (!user || user.role !== "teacher") {
+  if (!user || !atLeast(user.role, "teacher")) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

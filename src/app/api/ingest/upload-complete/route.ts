@@ -5,6 +5,7 @@ import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { extractAndSaveChunks } from "@/lib/ingestion/process";
 import { ingestDocumentWorkflow } from "@/workflows/ingest-document";
+import { atLeast } from "@/lib/roles";
 
 export const runtime = "nodejs";
 
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
   }
 
   const user = await getCurrentAppUser();
-  if (!user || user.role !== "teacher") {
+  if (!user || !atLeast(user.role, "teacher")) {
     return NextResponse.json({ error: "Only signed-in teachers can complete uploads." }, { status: 403 });
   }
 

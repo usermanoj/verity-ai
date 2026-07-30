@@ -2,7 +2,7 @@ import Link from "next/link";
 import ClassCodes from "@/components/classes/ClassCodes";
 import TeacherTabs from "@/components/teacher/TeacherTabs";
 import { Panel } from "@/components/analytics/charts";
-import { requireRole } from "@/lib/auth";
+import { requireAtLeast } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 import { getClassCodes, joinQrs } from "@/lib/teacher-classes";
 
@@ -14,7 +14,7 @@ import { getClassCodes, joinQrs } from "@/lib/teacher-classes";
 export const dynamic = "force-dynamic";
 
 export default async function TeacherClassesPage() {
-  await requireRole("teacher", "/teacher/classes");
+  await requireAtLeast("teacher", "/teacher/classes");
   const codes = await getClassCodes();
 
   return (

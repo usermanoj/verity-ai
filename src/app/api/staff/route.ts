@@ -4,6 +4,7 @@ import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseServer } from "@/lib/supabase/server";
 import { canInvite, normaliseEmail } from "@/lib/staff";
 import { reportError } from "@/lib/errors/report";
+import { atLeast } from "@/lib/roles";
 
 export const runtime = "nodejs";
 
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   const user = await getCurrentAppUser();
-  if (!user || (user.role !== "principal" && user.role !== "hod")) {
+  if (!user || (!atLeast(user.role, "principal") && !atLeast(user.role, "hod"))) {
     // Same response for "not signed in" and "not senior enough": whether this
     // school has a staff page is not information a teacher needs.
     return NextResponse.json({ error: "Only a principal or head of department can manage staff." }, { status: 403 });

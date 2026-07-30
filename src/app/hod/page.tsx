@@ -2,13 +2,13 @@ import Link from "next/link";
 import SchoolAnalyticsView from "@/components/analytics/SchoolAnalyticsView";
 import SchoolLanguageView from "@/components/analytics/SchoolLanguageView";
 import { getSchoolAnalytics, getSchoolLearning, getSchoolLanguage } from "@/lib/analytics";
-import { requireRole } from "@/lib/auth";
+import { requireAtLeast } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 
 export const dynamic = "force-dynamic";
 
 export default async function HodPage() {
-  await requireRole("hod", "/hod");
+  await requireAtLeast("hod", "/hod");
   const [data, learning, language] = await Promise.all([
     getSchoolAnalytics(),
     getSchoolLearning(),

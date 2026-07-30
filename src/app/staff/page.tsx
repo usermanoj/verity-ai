@@ -5,6 +5,7 @@ import { getStaffList } from "@/lib/staff-repo";
 import StaffManager from "@/components/staff/StaffManager";
 import SessionBadge from "@/components/SessionBadge";
 import { hasSupabase } from "@/lib/supabase/config";
+import { atLeast } from "@/lib/roles";
 
 // Who works here, and who may say so.
 //
@@ -22,7 +23,7 @@ export default async function StaffPage() {
 
   // requireSignedIn returns null without Supabase (preview builds stay in demo
   // mode). There is nothing meaningful to show there.
-  if (hasSupabase() && user && user.role !== "principal" && user.role !== "hod") {
+  if (hasSupabase() && user && !atLeast(user.role, "hod")) {
     redirect("/");
   }
 
