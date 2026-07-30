@@ -55,6 +55,23 @@ export function TeacherLearningPanels({ data }: { data: TeacherLearning }) {
               </div>
             ))}
           </div>
+
+          {/* The section rows now add up to the total, which they only can
+              because an answer that could belong to two sections is counted in
+              one. Said here rather than left for a teacher to notice, and
+              naming the student because that is the part they can act on — a
+              child in two sections receiving the same deck is usually a
+              duplicated enrolment. */}
+          {/* Defaulted, because the page deploys before the migration runs and
+              an older function returns no such field. `.length` on undefined
+              would take down the whole panel to explain a footnote. */}
+          {(data.sharedStudents ?? []).length > 0 && (
+            <p className="mt-3 text-xs text-[var(--muted)]">
+              {(data.sharedStudents ?? []).map((s) => `${s.name} is in ${s.sections.join(" and ")}`).join("; ")}
+              {(data.sharedStudents ?? []).length === 1 ? " and receives" : " and receive"} the same material in each.
+              Their answers are counted once, in the first of those sections.
+            </p>
+          )}
         </Panel>
       )}
 
