@@ -125,24 +125,47 @@ export type Database = {
         };
         Relationships: [];
       };
+      // Extended by 0034: who issued the grant, whether it was taken up, and
+      // whether it has been withdrawn. Withdrawal is a soft delete, so a school
+      // can answer "who had access to this class in March".
       staff_allowlist: {
         Row: {
           email: string;
           school_id: string;
           role: "teacher" | "hod" | "principal";
           created_at: string;
+          invited_by: string | null;
+          invited_at: string;
+          claimed_at: string | null;
+          claimed_by: string | null;
+          revoked_at: string | null;
+          revoked_by: string | null;
+          source: "invite" | "bootstrap" | "seed";
         };
         Insert: {
           email: string;
           school_id: string;
           role: "teacher" | "hod" | "principal";
           created_at?: string;
+          invited_by?: string | null;
+          invited_at?: string;
+          claimed_at?: string | null;
+          claimed_by?: string | null;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
+          source?: "invite" | "bootstrap" | "seed";
         };
         Update: {
           email?: string;
           school_id?: string;
           role?: "teacher" | "hod" | "principal";
           created_at?: string;
+          invited_by?: string | null;
+          claimed_at?: string | null;
+          claimed_by?: string | null;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
+          source?: "invite" | "bootstrap" | "seed";
         };
         Relationships: [];
       };
@@ -608,6 +631,19 @@ export type Database = {
       };
       teacher_student_detail: {
         Args: { p_student_id: string };
+        Returns: unknown;
+      };
+      // Staff onboarding (0034): who works here, and who may say so.
+      staff_list: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
+      invite_staff: {
+        Args: { p_email: string; p_role: string };
+        Returns: unknown;
+      };
+      revoke_staff: {
+        Args: { p_email: string };
         Returns: unknown;
       };
       // Records or increments one application failure (0033). Service-role
