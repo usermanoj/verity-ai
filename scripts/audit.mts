@@ -149,6 +149,8 @@ async function pages() {
   const learning = must(await me.rpc("teacher_learning_analytics"), "teacher_learning_analytics") as {
     overall: { attempts: number; correct: number; studentsEnrolled: number; studentsActive: number };
     bySection: { section: string; attempts: number; correct: number; active: number }[];
+    // Optional: added by 0039, so a database that predates it returns no key.
+    sharedStudents?: { name: string; sections: string[] }[];
     assistant: { intents: { intent: string; count: number }[] };
   } | null;
 
@@ -158,6 +160,20 @@ async function pages() {
     const o = learning.overall;
     console.log(`class accuracy: ${o.correct} of ${o.attempts}   students ${o.studentsActive}/${o.studentsEnrolled} active`);
     console.log("\n" + table([["SECTION", "ANSWERS", "CORRECT", "ACTIVE"], ...learning.bySection.map((s) => [s.section, String(s.attempts), String(s.correct), String(s.active)])]));
+    // The section rows sum to the total only because an answer that could
+    // belong to two sections is counted in one (0039). Asserted rather than
+    // printed: an audit that shows the parts without checking they make the
+    // whole is the same silence this tool exists to remove.
+    const summed = learning.bySection.reduce((n, s) => n + s.attempts, 0);
+    console.log(
+      summed === learning.overall.attempts
+        ? `\nsections sum to ${summed}, matching the total`
+        : `\nMISMATCH: sections sum to ${summed} but the total is ${learning.overall.attempts}`,
+    );
+    for (const sh of learning.sharedStudents ?? []) {
+      console.log(`  ${sh.name} is in ${sh.sections.join(" and ")} — answers counted once, in ${sh.sections[0]}`);
+    }
+
     console.log("\nassistant: " + learning.assistant.intents.map((i) => `${i.intent} ${i.count}`).join(", "));
   }
 
