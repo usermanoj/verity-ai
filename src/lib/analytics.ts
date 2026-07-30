@@ -2,6 +2,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import type { StudentProgress } from "@/lib/student-progress";
 import type { AskedAbout, QuestionOutcome } from "@/lib/concept-failure";
 import { hasSupabase } from "@/lib/supabase/config";
+import { reportError } from "@/lib/errors/report";
 
 // Reads the analytics RPCs. One call per dashboard, because a dashboard that
 // issues eight queries pays eight round trips to a database in another
@@ -176,7 +177,12 @@ async function callAnalytics<T>(fn: AnalyticsFn): Promise<T | null> {
     const { data, error } = await supabase.rpc(fn);
     if (error || !data) return null;
     return data as T;
-  } catch {
+  } catch (err) {
+    // Still returns null — a dashboard panel showing nothing beats a page
+    // that will not render. But the failure is now recorded, because "the
+    // analytics look empty" was previously indistinguishable from "there is no
+    // data yet", and those need opposite responses.
+    await reportError("analytics", err, "rpc failed");
     return null;
   }
 }

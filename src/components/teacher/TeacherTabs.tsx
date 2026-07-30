@@ -18,6 +18,7 @@ const TABS = [
   { href: "/teacher/classes", label: "Classes", icon: "🔑", blurb: "Join codes and QR" },
   { href: "/teacher/language", label: "Language", icon: "🈶", blurb: "Vocabulary and translations, and your corrections" },
   { href: "/teacher/insights", label: "Insights", icon: "📊", blurb: "Coverage, difficulty, progress" },
+  { href: "/teacher/health", label: "Health", icon: "🩺", blurb: "Problems the app hit without telling anyone" },
 ];
 
 export default function TeacherTabs() {

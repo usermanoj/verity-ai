@@ -41,6 +41,17 @@ export type Database = {
         };
         Relationships: [];
       };
+      // Aggregated application failures (0033), one row per distinct problem
+      // per day. Staff may read; only the service role writes.
+      app_errors: {
+        Row: {
+          fingerprint: string; day: string; area: string; message: string;
+          detail: string | null; count: number; first_seen: string; last_seen: string;
+        };
+        Insert: { fingerprint: string; day: string; area: string; message: string; detail?: string | null; count?: number };
+        Update: { count?: number; last_seen?: string; detail?: string | null };
+        Relationships: [];
+      };
       // Per-person, per-day AI call counter (0032). Written only through
       // claim_ai_call; nothing reads it through RLS.
       ai_usage: {
@@ -597,6 +608,12 @@ export type Database = {
       };
       teacher_student_detail: {
         Args: { p_student_id: string };
+        Returns: unknown;
+      };
+      // Records or increments one application failure (0033). Service-role
+      // only; nothing a browser can reach may write here.
+      record_error: {
+        Args: { p_fingerprint: string; p_area: string; p_message: string; p_detail?: string | null };
         Returns: unknown;
       };
       // Counts one AI call against the caller's day and reports the totals

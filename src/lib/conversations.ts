@@ -2,6 +2,7 @@ import { supabaseAdmin, hasSupabaseAdmin } from "@/lib/supabase/admin";
 import { contentRepo } from "@/lib/content-repo";
 import type { AppUser } from "@/lib/auth";
 import { isDemoTopic } from "@/lib/access";
+import { reportError } from "@/lib/errors/report";
 
 // Records what students ask the tutor, and what it answered.
 //
@@ -66,7 +67,8 @@ export async function conversationFor(user: AppUser | null, topicId: string): Pr
       .maybeSingle();
 
     return created?.id ?? null;
-  } catch {
+  } catch (err) {
+    await reportError("conversations", err, "could not open a conversation");
     return null;
   }
 }
@@ -83,8 +85,12 @@ export async function logTurn(
     await supabaseAdmin()
       .from("conversation_turns")
       .insert({ conversation_id: conversationId, role, text, intent: intent ?? null, cited_chunk_ids: citedChunkIds });
-  } catch {
-    // Deliberately silent — see the note at the top of this file.
+  } catch (err) {
+    // Still swallowed for the caller — a lesson must not fail because a
+    // transcript row did not save. But this is the write whose loss corrupts
+    // the teacher's transcript and the "Asked about most" counts, so it is
+    // exactly the one that should never have been silent.
+    await reportError("conversations", err, "could not save a turn");
   }
 }
 
@@ -115,7 +121,8 @@ async function classFor(studentId: string, topicId: string): Promise<string | nu
       .maybeSingle();
 
     return match?.class_id ?? null;
-  } catch {
+  } catch (err) {
+    await reportError("conversations", err, "could not resolve the class for a topic");
     return null;
   }
 }
