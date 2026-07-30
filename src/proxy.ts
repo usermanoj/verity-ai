@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { hasSupabase } from "@/lib/supabase/config";
 import { updateSupabaseSession } from "@/lib/supabase/middleware";
 
-// Interim, best-effort protection for the AI-calling routes until real
-// per-user auth (Phase 1) and a persistent rate-limit store (Vercel KV /
-// Upstash) are in place. This exists because the moment live AI Gateway
-// credentials are set, /api/tutor and /api/translate become open endpoints
-// anyone on the internet can call — burning API credits with no rate limit
-// at all. This proxy meaningfully raises the bar; it is NOT a substitute for real
-// authentication. See ROADMAP.md Phase 0/1.
+// Burst protection in front of the AI-calling routes.
+//
+// This began as the ONLY thing between the internet and the API budget, when
+// /api/tutor and /api/translate were open endpoints. Both now require a
+// signed-in account and both count against a daily per-person and per-school
+// ceiling in Postgres, so this file is no longer load-bearing for spend.
 //
 // Also refreshes the Supabase session (once per navigation, standard
 // middleware pattern) so pages/routes downstream see a valid token — a true
@@ -26,13 +25,30 @@ import { updateSupabaseSession } from "@/lib/supabase/middleware";
 //    a browser-style Origin header. A scripted client that omits Origin
 //    entirely (e.g. a bare curl/requests call) bypasses this trivially —
 //    it is a deterrent, not a boundary.
-// 2. Per-IP sliding-window rate limit — held in an in-memory Map, so it only
+// 2. Per-IP sliding-window BURST limit — held in an in-memory Map, so it only
 //    protects within a single warm serverless instance's lifetime and does
-//    not coordinate across regions/instances. Real protection needs a
-//    persistent store (Vercel KV) once that's provisioned.
+//    not coordinate across regions/instances.
+//
+// What changed: the real spend ceiling is no longer here. It is a per-person
+// and per-school DAILY count in Postgres (migration 0032, src/lib/ai-budget.ts),
+// which survives cold starts and coordinates across regions because there is
+// one database. Both AI routes now also require a signed-in account, so an
+// anonymous request is refused before any model call.
+//
+// That leaves this file one narrow job: absorbing a burst. It is no longer the
+// thing standing between a stranger and the API budget, and the window below
+// was raised accordingly — see MAX_REQUESTS_PER_WINDOW.
 
 const WINDOW_MS = 60_000;
-const MAX_REQUESTS_PER_WINDOW = 20;
+// Raised from 20. Keying on IP means a computer room of thirty students behind
+// one school NAT shared a single bucket — twenty requests a minute for the
+// whole school — while anyone spreading requests across addresses got the full
+// allowance per address. It throttled the customer and waved through the abuse.
+//
+// Now that a signed-in account is required and the day is bounded per person in
+// Postgres, this only needs to stop a burst from one address, so it can be
+// loose enough not to punish a shared connection.
+const MAX_REQUESTS_PER_WINDOW = 90;
 const PROTECTED_PATHS = ["/api/tutor", "/api/translate"];
 
 type Bucket = { count: number; windowStart: number };

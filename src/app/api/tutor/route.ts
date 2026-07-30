@@ -16,6 +16,7 @@ import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
 import { canSee, visibleDocuments } from "@/lib/access";
 import { conversationFor, logTurn } from "@/lib/conversations";
+import { claimAiCall } from "@/lib/ai-usage";
 
 export const runtime = "nodejs";
 
@@ -125,6 +126,26 @@ export async function POST(req: NextRequest) {
     return new Response(stream, { headers: { "Content-Type": "application/x-ndjson" } });
   }
 
+  // Past the demo branch, so a real model call is now certain. Counted here
+  // rather than at the top of the handler because a fallback reply costs
+  // nothing and must not spend a student's day.
+  //
+  // Skipped without Supabase for the same reason auth is: a preview deployment
+  // has no accounts to count against.
+  let callsLeft: number | null = null;
+  if (hasSupabase()) {
+    const claim = await claimAiCall("tutor");
+    if (!claim.verdict.allowed) {
+      // 429, and the message is written for a child reading it mid-lesson. It
+      // says what still works, because "limit reached" to an eleven-year-old
+      // reads as "you have broken it".
+      return jsonError(claim.verdict.message, 429);
+    }
+    // Carried to the client on the done line, so a student close to their limit
+    // is warned rather than cut off without notice.
+    callsLeft = claim.callsLeft;
+  }
+
   // Whether the student typed anything, as opposed to tapping the button
   // again — the prompt treats those very differently (see intentGuide).
   const studentReplied = typeof question === "string" && question.trim().length > 0;
@@ -212,7 +233,7 @@ export async function POST(req: NextRequest) {
           controller.enqueue(jsonLine({ type: "delta", text: "⚠️ The AI had a problem generating a reply. Please try again." }));
           controller.enqueue(jsonLine({ type: "done", error: true, detail: streamFailure ?? "empty_stream" }));
         } else {
-          controller.enqueue(jsonLine({ type: "done", demo: false }));
+          controller.enqueue(jsonLine({ type: "done", demo: false, callsLeft }));
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";

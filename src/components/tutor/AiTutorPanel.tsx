@@ -20,6 +20,7 @@ type Msg = {
   isTranslation?: boolean; // true for a Translate result — never re-translate a translation
   translationOf?: string;  // id of the message this translates, so it is only translated once
   streaming?: boolean;     // true while text is still arriving
+  callsLeft?: number;      // few enough AI requests left today to be worth saying
 };
 
 const BUTTONS: { intent: Intent; label: string; icon: string; hint: string }[] = [
@@ -330,7 +331,7 @@ function speak(text: string, onFinished?: () => void) {
 async function consumeNdjsonStream(
   res: Response,
   onDelta: (accumulated: string) => void,
-): Promise<{ text: string; demo: boolean; sourceId?: string; error?: boolean }> {
+): Promise<{ text: string; demo: boolean; sourceId?: string; error?: boolean; callsLeft?: number }> {
   if (!res.body) throw new Error("No response body");
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -339,6 +340,7 @@ async function consumeNdjsonStream(
   let demo = false;
   let sourceId: string | undefined;
   let error = false;
+  let callsLeft: number | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -349,7 +351,14 @@ async function consumeNdjsonStream(
       const line = buffer.slice(0, newlineIdx);
       buffer = buffer.slice(newlineIdx + 1);
       if (!line.trim()) continue;
-      const evt = JSON.parse(line) as { type: string; text?: string; demo?: boolean; sourceId?: string; error?: boolean };
+      const evt = JSON.parse(line) as {
+        type: string;
+        text?: string;
+        demo?: boolean;
+        sourceId?: string;
+        error?: boolean;
+        callsLeft?: number | null;
+      };
       if (evt.type === "delta" && evt.text) {
         accumulated += evt.text;
         onDelta(accumulated);
@@ -357,10 +366,11 @@ async function consumeNdjsonStream(
         demo = !!evt.demo;
         sourceId = evt.sourceId;
         error = !!evt.error;
+        callsLeft = evt.callsLeft ?? undefined;
       }
     }
   }
-  return { text: accumulated, demo, sourceId, error };
+  return { text: accumulated, demo, sourceId, error, callsLeft };
 }
 // ---------------------------------------------------------------------------
 
@@ -606,6 +616,7 @@ export default function AiTutorPanel({
                 demo: result.demo,
                 intent,
                 chunkId: result.sourceId ?? (intent === "check" ? contextChunkId : undefined),
+                callsLeft: result.callsLeft,
                 streaming: false,
               }
             : msg,
@@ -704,6 +715,16 @@ export default function AiTutorPanel({
                       {speakingId === m.id ? "⏹ Stop" : "🔊 Read aloud"}
                     </button>
                     {m.demo && <span className="text-[10px] text-[var(--warn)]">demo mode (no API key)</span>}
+                    {/* Only when the number is small. A student who knows they
+                        have a few left can choose what to spend them on, which
+                        is the difference between a limit and a punishment. */}
+                    {m.callsLeft !== undefined && (
+                      <span className="text-[10px] text-[var(--muted)]">
+                        {m.callsLeft === 1
+                          ? "1 more assistant request today"
+                          : `${m.callsLeft} more assistant requests today`}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
