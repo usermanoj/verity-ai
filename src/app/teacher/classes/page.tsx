@@ -5,6 +5,7 @@ import { Panel } from "@/components/analytics/charts";
 import { requireAtLeast } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
 import { getClassCodes, joinQrs } from "@/lib/teacher-classes";
+import { seniorHomeFor } from "@/lib/roles";
 
 // Enrolment, on its own screen.
 //
@@ -14,7 +15,7 @@ import { getClassCodes, joinQrs } from "@/lib/teacher-classes";
 export const dynamic = "force-dynamic";
 
 export default async function TeacherClassesPage() {
-  await requireAtLeast("teacher", "/teacher/classes");
+  const viewer = await requireAtLeast("teacher", "/teacher/classes");
   const codes = await getClassCodes();
 
   return (
@@ -29,7 +30,7 @@ export default async function TeacherClassesPage() {
       <h1 className="text-3xl font-bold tracking-tight">Classes</h1>
       <p className="mb-6 mt-1 text-[var(--muted)]">How your students get in, and who has joined so far.</p>
 
-      <TeacherTabs />
+      <TeacherTabs seniorHome={seniorHomeFor(viewer?.role)} />
 
       <Panel title="Class codes" hint="Students sign in with their school account, then enter a code once to join a section.">
         <ClassCodes initial={codes} qrFor={await joinQrs(codes)} />

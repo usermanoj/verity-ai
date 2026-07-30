@@ -7,6 +7,7 @@ import { getStudentProgress, getQuestionOutcomes, getAskedAbout } from "@/lib/an
 import { ConceptFailurePanel, AskedAboutPanel } from "@/components/analytics/ReteachPanels";
 import { requireAtLeast } from "@/lib/auth";
 import SessionBadge from "@/components/SessionBadge";
+import { seniorHomeFor } from "@/lib/roles";
 
 // The analysis, on its own screen.
 //
@@ -17,7 +18,7 @@ import SessionBadge from "@/components/SessionBadge";
 export const dynamic = "force-dynamic";
 
 export default async function TeacherInsightsPage() {
-  await requireAtLeast("teacher", "/teacher/insights");
+  const viewer = await requireAtLeast("teacher", "/teacher/insights");
   const [data, learning, progress, outcomes, asked] = await Promise.all([
     getTeacherAnalytics(),
     getTeacherLearning(),
@@ -40,7 +41,7 @@ export default async function TeacherInsightsPage() {
         Coverage, difficulty balance and how your students are doing — counted from your own material.
       </p>
 
-      <TeacherTabs />
+      <TeacherTabs seniorHome={seniorHomeFor(viewer?.role)} />
 
       {/* Students first. Coverage and difficulty describe the material; this
           describes the children, and it is the only part of this page a

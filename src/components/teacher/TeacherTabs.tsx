@@ -21,11 +21,28 @@ const TABS = [
   { href: "/teacher/health", label: "Health", icon: "🩺", blurb: "Problems the app hit without telling anyone" },
 ];
 
-export default function TeacherTabs() {
+/**
+ * @param seniorHome where to go back to for someone who is also senior staff,
+ *   or null for a plain teacher. Passed in rather than read here because this
+ *   is a Client Component and the role lives on the server.
+ */
+export default function TeacherTabs({ seniorHome }: { seniorHome?: string | null }) {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Teacher sections" className="mb-6 flex flex-wrap gap-2">
+    <nav aria-label="Teacher sections" className="mb-6 flex flex-wrap items-center gap-2">
+      {/* The way back. A principal reaching this area had no route to the
+          school dashboard from any of the six tabs and had to type the URL —
+          which, for navigation, is the same as it not existing. It sits before
+          the tabs because it leaves this area rather than moving within it. */}
+      {seniorHome && (
+        <Link
+          href={seniorHome}
+          className="mr-1 rounded-xl border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--text)]"
+        >
+          ← School
+        </Link>
+      )}
       {TABS.map((tab) => {
         // Exact match for the index route, prefix for the rest — otherwise
         // /teacher would light up on every child page.
