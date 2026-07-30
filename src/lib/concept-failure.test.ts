@@ -79,6 +79,82 @@ describe("topMisconception", () => {
 });
 
 describe("conceptsToReteach", () => {
+  it("merges a section that was re-uploaded under a new chunk id", () => {
+    // The bug this grouping exists for. Approving a deck a second time mints
+    // new chunk ids for the same sections, so 5 attempts and 5 attempts became
+    // two concepts of 5 rather than one of 10 — and with MIN_ATTEMPTS at 5,
+    // one more re-upload would push both under the floor and silence a section
+    // the class is genuinely failing.
+    const out = conceptsToReteach([
+      q({ questionId: "a", chunkId: "old-copy", heading: "Early history of magnetism", attempts: 5, wrong: 4, students: 1 }),
+      q({ questionId: "b", chunkId: "new-copy", heading: "Early history of magnetism", attempts: 5, wrong: 3, students: 1 }),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ attempts: 10, wrong: 7, heading: "Early history of magnetism" });
+  });
+
+  it("counts a child who answered both copies once, not twice", () => {
+    // The other half of the same fault: summing students across copies would
+    // report two children where there is one.
+    const out = conceptsToReteach([
+      q({ questionId: "a", chunkId: "old-copy", heading: "Magnetic fields", attempts: 6, wrong: 4, students: 1 }),
+      q({ questionId: "b", chunkId: "new-copy", heading: "Magnetic fields", attempts: 6, wrong: 4, students: 1 }),
+    ]);
+    expect(out[0].students).toBe(1);
+  });
+
+  it("does not merge the same heading from two different documents", () => {
+    // Physics and Chemistry can both have an "Introduction". They are not one
+    // lesson, and a teacher told to reteach "Introduction" learns nothing.
+    const out = conceptsToReteach([
+      q({ questionId: "a", chunkId: "c1", document: "Physics", heading: "Introduction", attempts: 6, wrong: 4, students: 6 }),
+      q({ questionId: "b", chunkId: "c2", document: "Chemistry", heading: "Introduction", attempts: 6, wrong: 4, students: 6 }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it("does not merge two sections that merely share the untitled placeholder", () => {
+    // Every deck has several. Merging them invents a concept that does not
+    // exist, labelled with a heading that points a teacher nowhere.
+    const out = conceptsToReteach([
+      q({ questionId: "a", chunkId: "c1", heading: "Untitled section", attempts: 6, wrong: 4, students: 6 }),
+      q({ questionId: "b", chunkId: "c2", heading: "Untitled section", attempts: 6, wrong: 4, students: 6 }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it("merges headings that differ only in case or spacing", () => {
+    // Re-extraction is not byte-identical: a trailing space or a capital is
+    // not a different section.
+    const out = conceptsToReteach([
+      q({ questionId: "a", chunkId: "c1", heading: "Magnetic  Materials ", attempts: 5, wrong: 3, students: 1 }),
+      q({ questionId: "b", chunkId: "c2", heading: "magnetic materials", attempts: 5, wrong: 3, students: 1 }),
+    ]);
+    expect(out).toHaveLength(1);
+    // The first spelling seen is the one shown — not a normalised, lowercased
+    // version, which would look like a bug to a teacher.
+    expect(out[0].heading).toBe("Magnetic  Materials ");
+  });
+
+  it("cannot collide two lessons whose names run together", () => {
+    // "Forces" + "and motion" against "Forces and" + "motion". Joining the two
+    // with a space would make these one key and one instruction to reteach.
+    const out = conceptsToReteach([
+      q({ questionId: "a", chunkId: "c1", document: "Forces", heading: "and motion", attempts: 6, wrong: 4, students: 6 }),
+      q({ questionId: "b", chunkId: "c2", document: "Forces and", heading: "motion", attempts: 6, wrong: 4, students: 6 }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it("gives each concept a key that is stable across a re-upload", () => {
+    // The React key. If it carried a chunk id, a re-upload would remount every
+    // row; worse, it is the identity the grouping is built on.
+    const [a] = conceptsToReteach([q({ chunkId: "old", heading: "Fields", attempts: 6, wrong: 4, students: 6 })]);
+    const [b] = conceptsToReteach([q({ chunkId: "new", heading: "Fields", attempts: 6, wrong: 4, students: 6 })]);
+    expect(a.key).toBe(b.key);
+    expect(a.key).not.toContain("old");
+  });
+
   it("groups questions by the section they came from", () => {
     const out = conceptsToReteach([
       q({ questionId: "a", chunkId: "c1", attempts: 10, wrong: 6, students: 10 }),
