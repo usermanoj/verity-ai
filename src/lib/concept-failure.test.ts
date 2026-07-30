@@ -4,7 +4,9 @@ import {
   lessonsToRevisit,
   optionText,
   topMisconception,
+  untitledLesson,
   MIN_ATTEMPTS,
+  UNTITLED_LESSON,
   type AskedAbout,
   type QuestionOutcome,
 } from "./concept-failure";
@@ -174,6 +176,68 @@ describe("lessonsToRevisit", () => {
 
   it("drops lessons nobody asked about", () => {
     expect(lessonsToRevisit([row({ topic: "Untouched", presses: 0 })])).toEqual([]);
+  });
+
+  it("drops the lesson whose name is gone, even when it would rank first", () => {
+    // The real shape of the data: 25 requests with no lesson name against 10
+    // with one. Ranking it first made the loudest thing on the page a mystery
+    // a teacher could do nothing about.
+    const out = lessonsToRevisit([
+      row({ topic: UNTITLED_LESSON, presses: 25, students: 1, maxInOneSitting: 9, repeatedStudents: 1 }),
+      row({ topic: "Magnets and Electromagnets", presses: 10, students: 1, maxInOneSitting: 6, repeatedStudents: 1 }),
+    ]);
+    expect(out.map((r) => r.topic)).toEqual(["Magnets and Electromagnets"]);
+  });
+
+  it("treats a blank title the same as a missing one", () => {
+    expect(lessonsToRevisit([row({ topic: "   ", presses: 9, maxInOneSitting: 9 })])).toEqual([]);
+  });
+
+  it("does not drop a lesson that merely mentions the word untitled", () => {
+    // The sentinel is matched exactly, not by substring — a real lesson called
+    // "Untitled lesson plans, week 3" is a real lesson.
+    const out = lessonsToRevisit([row({ topic: "Untitled lesson plans, week 3", presses: 4, maxInOneSitting: 4 })]);
+    expect(out).toHaveLength(1);
+  });
+});
+
+describe("untitledLesson", () => {
+  const row = (over: Partial<AskedAbout>): AskedAbout => ({
+    topic: "Lesson",
+    presses: 0,
+    students: 0,
+    maxInOneSitting: 0,
+    repeatedStudents: 0,
+    ...over,
+  });
+
+  it("reports what was dropped, so the panel can account for it", () => {
+    // A list that quietly shrinks is the same fault as an accuracy figure
+    // computed over staff: the number is right and the reading of it is wrong.
+    const hidden = untitledLesson([
+      row({ topic: UNTITLED_LESSON, presses: 25, students: 1, maxInOneSitting: 9 }),
+      row({ topic: "Magnets", presses: 10 }),
+    ]);
+    expect(hidden).toMatchObject({ presses: 25, maxInOneSitting: 9 });
+  });
+
+  it("returns null when every lesson has a name", () => {
+    expect(untitledLesson([row({ topic: "Magnets", presses: 10 })])).toBeNull();
+  });
+
+  it("returns null rather than an empty row when the untitled lesson had no presses", () => {
+    // Nothing to account for, so nothing should be said.
+    expect(untitledLesson([row({ topic: UNTITLED_LESSON, presses: 0 })])).toBeNull();
+  });
+
+  it("sums across several untitled rows rather than reporting the first", () => {
+    // The SQL groups by topic so there is normally one row. This guards the
+    // count against a future grouping change under-reporting.
+    const hidden = untitledLesson([
+      row({ topic: UNTITLED_LESSON, presses: 8, maxInOneSitting: 4 }),
+      row({ topic: "", presses: 6, maxInOneSitting: 6 }),
+    ]);
+    expect(hidden).toMatchObject({ presses: 14, maxInOneSitting: 6 });
   });
 
   it("does not mutate its input", () => {

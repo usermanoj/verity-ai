@@ -4,6 +4,7 @@ import {
   lessonsToRevisit,
   MIN_ATTEMPTS,
   REPEAT_THRESHOLD,
+  untitledLesson,
   type AskedAbout,
   type QuestionOutcome,
 } from "@/lib/concept-failure";
@@ -77,6 +78,7 @@ export function ConceptFailurePanel({ outcomes }: { outcomes: QuestionOutcome[] 
 
 export function AskedAboutPanel({ rows }: { rows: AskedAbout[] }) {
   const lessons = lessonsToRevisit(rows).slice(0, 8);
+  const hidden = untitledLesson(rows);
 
   return (
     <Panel
@@ -84,8 +86,14 @@ export function AskedAboutPanel({ rows }: { rows: AskedAbout[] }) {
       hint="Where students pressed Explain or Give Example. This shows confusion before anyone gets a question wrong."
     >
       {lessons.length === 0 ? (
+        // Two different empty states. "Nobody has asked for help" is false when
+        // every request came from a sitting whose lesson name is gone — and it
+        // is the reading a teacher would take away from a panel that dropped
+        // those rows without saying so.
         <p className="text-sm text-[var(--muted)]">
-          Nobody has asked the assistant for help yet.
+          {hidden
+            ? "No named lessons to show yet. Older sittings were recorded before we kept the lesson name, so there is nothing to point you at."
+            : "Nobody has asked the assistant for help yet."}
         </p>
       ) : (
         <div className="space-y-2">
@@ -113,6 +121,22 @@ export function AskedAboutPanel({ rows }: { rows: AskedAbout[] }) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Said, not swallowed. These requests are real and are not in the list
+          above, and a total that quietly shrinks is the same fault as an
+          accuracy figure computed over staff — the number is right and the
+          teacher's reading of it is wrong. */}
+      {hidden && lessons.length > 0 && (
+        // Sentence built in JS, not assembled from JSX fragments: the verb has
+        // to agree with the count as well as the noun, and JSX collapsing
+        // whitespace around expressions is how "1 studentcan't" happened.
+        <p className="mt-3 text-xs text-[var(--muted)]">
+          {hidden.presses === 1
+            ? "1 earlier request isn’t listed"
+            : `${hidden.presses} earlier requests aren’t listed`}
+          {" — those sittings were recorded before we kept the lesson name, so there is no lesson to point you at."}
+        </p>
       )}
     </Panel>
   );
