@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SectionPicker, { type ClassOption } from "./SectionPicker";
 
 // What the teacher has actually uploaded, by name.
 //
@@ -17,6 +18,9 @@ export type MaterialRow = {
   subject: string;
   grade: string;
   sections: string[];
+  /** The classes behind those names — section names alone cannot be matched
+      back to a class, since two courses can each have a "7A". */
+  classIds: string[];
   status: "pending" | "approved" | "rejected";
   version: number;
   // Preformatted upstream so this component does no clock reading of its own.
@@ -60,7 +64,7 @@ export function formatStamp(iso: string): string {
   return Number.isNaN(t.getTime()) ? "" : STAMP.format(t);
 }
 
-export default function MaterialList({ rows }: { rows: MaterialRow[] }) {
+export default function MaterialList({ rows, classes = [] }: { rows: MaterialRow[]; classes?: ClassOption[] }) {
   if (rows.length === 0) {
     return (
       <p className="text-sm text-[var(--muted)]">
@@ -116,6 +120,10 @@ export default function MaterialList({ rows }: { rows: MaterialRow[] }) {
                   Review →
                 </Link>
               )}
+              {/* Where a deck goes was set once at upload and could never be
+                  corrected — so a wrong section meant re-uploading the file and
+                  re-approving every question, and in practice nobody did. */}
+              <SectionPicker documentId={row.id} classIds={row.classIds} options={classes} />
             </div>
           </div>
         );
