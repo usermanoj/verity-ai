@@ -633,7 +633,12 @@ export default function AiTutorPanel({
 
   return (
     <div className="glass-strong flex h-full flex-col rounded-3xl p-5">
-      <div className="mb-3 flex items-center justify-between">
+      {/* Sticky, because the controls live here and the conversation grows
+          under them. A student who wanted "Simpler English" three exchanges in
+          had to scroll the whole page back up to find it — so the setting that
+          exists for the student who is struggling was hardest to reach exactly
+          when they were struggling. */}
+      <div className="sticky top-0 z-10 -mx-5 -mt-5 mb-3 flex items-center justify-between rounded-t-3xl bg-[var(--bg-2)]/95 px-5 pb-3 pt-5 backdrop-blur">
         <div className="flex items-center gap-2">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--brand)] text-lg glow-brand">🤖</span>
           <div>

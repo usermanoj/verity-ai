@@ -161,12 +161,33 @@ export async function POST(req: NextRequest) {
   let userText: string;
   if (intent === "check") {
     const contextChunk = contextChunkId ? await contentRepo.getCorpusChunk(contextChunkId) : undefined;
-    userText = contextChunk
-      ? `The student is working on a problem related to: "${contextChunk.text}" (source: ${contextChunk.source}). ` +
-        `Their attempted answer/working: "${answer}". Give a hint about what to check — do not give the final answer.`
-      : `The student tapped "Check My Answer" but no specific question has been established in this conversation yet. ` +
+    // Did this assistant already ask them something? "Ask Me Questions" ends in
+    // a question, and the natural next tap is Check My Answer.
+    const askedSomething = (history ?? []).some((h) => h.role === "assistant" && h.content.includes("?"));
+
+    if (contextChunk) {
+      userText =
+        `The student is working on a problem related to: "${contextChunk.text}" (source: ${contextChunk.source}). ` +
+        `Their attempted answer/working: "${answer}". Give a hint about what to check — do not give the final answer.`;
+    } else if (askedSomething) {
+      // The bug this replaces: the prompt told the model "no specific question
+      // has been established in this conversation" while the question sat in
+      // the model's own previous message. The history IS threaded below, so the
+      // instruction contradicted what it could plainly see — and it obeyed the
+      // instruction, asking a student to paste back a question it had just
+      // asked them. Two turns of Ask Me Questions followed by one Check My
+      // Answer is the single most likely path through this panel, and it was
+      // the one that failed.
+      userText =
+        `The student is answering the LAST QUESTION YOU ASKED in this conversation. Find it in the messages above — ` +
+        `do not ask them to repeat it. Their answer: "${answer || question}". Say whether it is right. If it is right, ` +
+        `confirm briefly and say why. If it is wrong, give one hint towards the correct step without stating the answer.`;
+    } else {
+      userText =
+        `The student tapped "Check My Answer" but nothing has been asked of them yet in this conversation. ` +
         `Their input: "${answer || question}". Do NOT invent or guess a problem — ask them to state or paste the exact ` +
         `question they are solving, then you can check their working once you know it.`;
+    }
   } else {
     userText = question || "Please help me understand this topic.";
   }

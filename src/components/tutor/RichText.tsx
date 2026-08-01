@@ -1,4 +1,5 @@
 import { Fragment, memo, type ReactNode } from "react";
+import { deLatex } from "./delatex";
 
 // Renders the small Markdown subset the tutor actually emits.
 //
@@ -20,7 +21,10 @@ import { Fragment, memo, type ReactNode } from "react";
 // The text of a finished message never changes, so none of that work was
 // ever needed.
 function RichText({ text }: { text: string }) {
-  return <div className="space-y-2">{renderBlocks(text)}</div>;
+  // At render, not at storage. The transcript keeps exactly what the model
+  // said, so a teacher reading it later sees the truth — and a future renderer
+  // that CAN draw formulas is not stuck with text somebody flattened.
+  return <div className="space-y-2">{renderBlocks(deLatex(text))}</div>;
 }
 
 export default memo(RichText);
