@@ -98,3 +98,56 @@ describe("assignVisuals", () => {
     expect(kinds).toEqual(["field"]);
   });
 });
+
+// The lever, added when a real Moments deck rendered nothing but slide images.
+// Its `unless` guard carries more weight than any other in the list: a compass
+// needle in a field genuinely experiences a turning effect, and "magnetic
+// moment" is a real term — either would have put a see-saw in the middle of a
+// magnetism lesson.
+describe("visualFor — the lever", () => {
+  it("matches the headings a Moments deck actually uses", () => {
+    // All four verbatim from the uploaded Grade 7 deck.
+    expect(
+      visualFor("Moment formula and units", "Moment = force x perpendicular distance from the turning point."),
+    ).toBe("lever");
+    expect(visualFor("Principle of moments", "The clockwise moment equals the anticlockwise moment about the pivot.")).toBe(
+      "lever",
+    );
+    expect(visualFor("Checking whether beams are in equilibrium", "Compare the clockwise and anticlockwise moments.")).toBe(
+      "lever",
+    );
+    expect(visualFor("Definition of a moment", "The turning effect of a force depends on the force and the distance.")).toBe(
+      "lever",
+    );
+  });
+
+  it("does not put a see-saw in a magnetism lesson", () => {
+    // A compass needle turning in a field is a turning effect, and this is the
+    // sentence that would have matched.
+    expect(
+      visualFor("Turning effect on a compass needle", "The needle feels a turning effect from the magnetic field."),
+    ).not.toBe("lever");
+    expect(visualFor("Magnetic moment of a dipole", "The magnetic moment depends on the current and the area.")).not.toBe(
+      "lever",
+    );
+    expect(visualFor("Force on a current-carrying conductor", "The force depends on the current and the field.")).not.toBe(
+      "lever",
+    );
+  });
+
+  it("needs more than the word alone", () => {
+    // "For a moment, consider..." is English, not physics.
+    expect(visualFor("A moment in history", "Lodestones were described a long time ago.")).not.toBe("lever");
+  });
+
+  it("gives the lever to one section, not to all eight", () => {
+    // A concept earns its interactive once. Eight see-saws in one lesson reads
+    // as automation rather than authorship.
+    const sections = [
+      { heading: "Moment formula and units", text: "Moment = force x distance from the pivot.", hasMedia: false },
+      { heading: "Principle of moments", text: "Clockwise moment equals anticlockwise moment about the pivot.", hasMedia: false },
+      { heading: "Net moment examples", text: "Work out the resultant turning effect of two forces.", hasMedia: false },
+    ];
+    expect(assignVisuals(sections).filter((k) => k === "lever")).toHaveLength(1);
+  });
+});
