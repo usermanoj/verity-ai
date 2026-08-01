@@ -3,6 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
+import LeverBalance from "./LeverBalance";
 
 // Interactive illustrations for uploaded material.
 //
@@ -22,7 +23,15 @@ import { motion } from "framer-motion";
 // that does not clearly match gets no visual rather than an approximate one.
 // A wrong diagram teaches a wrong thing, so ambiguity resolves to nothing.
 
-export type VisualKind = "domains" | "field" | "broken" | "distance" | "electromagnet" | "conductor" | "grip";
+export type VisualKind =
+  | "domains"
+  | "field"
+  | "broken"
+  | "distance"
+  | "electromagnet"
+  | "conductor"
+  | "grip"
+  | "lever";
 
 // Ordered most specific first, and the first match wins.
 //
@@ -36,6 +45,21 @@ export type VisualKind = "domains" | "field" | "broken" | "distance" | "electrom
 // So each rule now carries an `unless` guard naming the neighbouring concepts
 // it must yield to, and the specific concepts sit above the general ones.
 const RULES: { kind: VisualKind; when: RegExp; needs: RegExp; unless?: RegExp }[] = [
+  {
+    // Moments. First because "moment", "pivot" and "turning effect" are
+    // unambiguous in a mechanics deck, and because until now this topic had no
+    // visual at all — an eight-section deck about levers rendered nothing but
+    // the teacher's slide images.
+    //
+    // The `unless` earns its place here more than anywhere else in this list: a
+    // compass needle in a field genuinely experiences a turning effect, and
+    // "magnetic moment" is a real term. Either would have put a see-saw in the
+    // middle of a magnetism lesson.
+    kind: "lever",
+    when: /(moment|lever|see-?saw|\bbeam|pivot|turning effect|equilibrium)/i,
+    needs: /(force|distance|pivot|turning point|clockwise|balanc)/i,
+    unless: /(magnet|compass|dipole|solenoid|current)/i,
+  },
   {
     kind: "domains",
     when: /domain/i,
@@ -140,6 +164,7 @@ export default function ConceptVisual({ kind }: { kind: VisualKind }) {
       {kind === "broken" && <BrokenMagnet />}
       {kind === "electromagnet" && <Electromagnet />}
       {kind === "distance" && <DistanceForce />}
+      {kind === "lever" && <LeverBalance />}
       {kind === "conductor" && <StraightConductor />}
       {kind === "grip" && <SolenoidGrip />}
       {kind === "field" && (
