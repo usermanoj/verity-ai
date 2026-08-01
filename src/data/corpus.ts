@@ -28,6 +28,11 @@ export type TopicMeta = {
   objective: string;
   /** When the teacher added it. Absent for the two hand-built demo topics. */
   addedAt?: string;
+  /**
+   * Who uploaded it. Decides whether the viewer may change the lesson's
+   * illustrations — the demo topics have no uploader, so nobody may.
+   */
+  uploadedBy?: string;
 };
 
 export const TOPICS: Record<string, TopicMeta> = {

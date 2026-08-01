@@ -9,6 +9,7 @@ export type TopicMedia = { url: string; width?: number; height?: number; kind: "
 export type TopicTable = { headers: string[]; rows: string[][] };
 import { ZH_TRANSLATIONS } from "@/data/translations-zh";
 import { MOMENTS_BANK, DISTANCE_TIME_BANK, type PracticeItem } from "@/data/practice-banks";
+import type { VisualOverride } from "@/lib/visuals/resolve";
 
 // A data-access abstraction over the approved-material corpus, translations,
 // and practice banks (ROADMAP.md Phase 0). Every method is async on purpose,
@@ -46,6 +47,15 @@ export interface ContentRepository {
    * correction since.
    */
   getSectionTranslations(topicId: string): Promise<Record<string, string>>;
+  /**
+   * A teacher's decisions about which interactive each section shows. Keyed by
+   * chunk rather than by document because that is how the table is keyed, and
+   * because the caller already holds the chunks.
+   *
+   * Only sections the teacher has ruled on come back. A section with no row
+   * keeps whatever matching picks — see lib/visuals/resolve.ts.
+   */
+  getSectionVisuals(chunkIds: string[]): Promise<VisualOverride[]>;
   getPracticeBank(topicId: string): Promise<PracticeItem[]>;
 }
 
@@ -80,6 +90,11 @@ class FileContentRepository implements ContentRepository {
   // not by source hash, and have no rows in translation_memory.
   async getSectionTranslations(): Promise<Record<string, string>> {
     return {};
+  }
+  // The demo topics' visuals are written into their pages by hand, not matched
+  // and not overridable.
+  async getSectionVisuals(): Promise<VisualOverride[]> {
+    return [];
   }
   async getPracticeBank(topicId: string): Promise<PracticeItem[]> {
     if (topicId === "moments") return MOMENTS_BANK;
@@ -163,7 +178,7 @@ class PostgresContentRepository implements ContentRepository {
 
     const { data } = await supabaseAdmin()
       .from("corpus_documents")
-      .select("id, source_file, created_at, corpus_document_sections(classes(courses(subject, grade)))")
+      .select("id, source_file, created_at, uploaded_by, corpus_document_sections(classes(courses(subject, grade)))")
       .eq("id", id)
       .eq("status", "approved")
       // A direct link to a superseded document is a link to material the
@@ -298,6 +313,22 @@ class PostgresContentRepository implements ContentRepository {
     return Object.fromEntries((data ?? []).map((r) => [r.source_hash as string, r.translation as string]));
   }
 
+  async getSectionVisuals(chunkIds: string[]): Promise<VisualOverride[]> {
+    if (chunkIds.length === 0) return [];
+    const { data, error } = await supabaseAdmin()
+      .from("section_visuals")
+      .select("chunk_id, visual")
+      .in("chunk_id", chunkIds);
+    if (error) {
+      // Falling back to automatic matching shows the lesson as it looked
+      // before the teacher touched it — thinner than they intended, but a
+      // whole lesson rather than an error page.
+      console.error("[content-repo] section visuals lookup failed:", error);
+      return [];
+    }
+    return (data ?? []).map((r) => ({ chunkId: r.chunk_id as string, visual: (r.visual as string | null) ?? null }));
+  }
+
   async getPracticeBank(topicId: string): Promise<PracticeItem[]> {
     const fromFile = await this.files.getPracticeBank(topicId);
     if (fromFile.length > 0) return fromFile;
@@ -336,6 +367,9 @@ type DocumentRow = {
   id: string;
   source_file: string;
   created_at?: string;
+  // Only selected where it is needed (getTopic); the listing does not ask for
+  // it, so a listed topic carries no uploader and offers no editing.
+  uploaded_by?: string | null;
   corpus_document_sections?: { classes?: { courses?: { subject: string; grade: string } | null } | null }[];
 };
 
@@ -350,6 +384,7 @@ function toTopicMeta(doc: DocumentRow): TopicMeta {
     title: doc.source_file.replace(/\.[^.]+$/, ""),
     objective: "",
     addedAt: doc.created_at,
+    uploadedBy: doc.uploaded_by ?? undefined,
   };
 }
 

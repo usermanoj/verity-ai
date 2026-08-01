@@ -41,8 +41,10 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
   // first reply rather than from whenever they remember to set a dropdown.
   const pref = await getLanguagePref(user?.id);
 
-  const [chunks, bank, media, tables, glossary, sectionTranslations] = await Promise.all([
-    contentRepo.getCorpusForTopic(topicId),
+  // The corpus comes first because the visual overrides are keyed by chunk.
+  const chunks = await contentRepo.getCorpusForTopic(topicId);
+
+  const [bank, media, tables, glossary, sectionTranslations, visualOverrides] = await Promise.all([
     contentRepo.getPracticeBank(topicId),
     contentRepo.getMediaForTopic(topicId),
     contentRepo.getTablesForTopic(topicId),
@@ -53,7 +55,15 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
     // approved this document — and replaced by their correction if they made
     // one.
     contentRepo.getSectionTranslations(topicId),
+    // Where the teacher has overruled the automatic match — moved a diagram,
+    // added one, or taken one away.
+    contentRepo.getSectionVisuals(chunks.map((c) => c.id)),
   ]);
+
+  // The uploader may re-illustrate their own deck. Being senior does not make
+  // a colleague's lesson yours to redecorate, which is also what the RPC
+  // enforces; this only decides whether the control is drawn.
+  const canEditVisuals = Boolean(topic.uploadedBy) && topic.uploadedBy === user?.id;
 
   // Keyed by source hash in the database, by chunk id for the client: the
   // lesson components are client-side and cannot hash, and this page is a
@@ -146,6 +156,8 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
             tablesByPage={Object.fromEntries(tables)}
             glossary={glossary}
             translationBySection={translationBySection}
+            visualOverrides={visualOverrides}
+            canEditVisuals={canEditVisuals}
           />
 
           {bank.length > 0 ? (
