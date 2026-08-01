@@ -8,6 +8,7 @@ import DataTable, { type SectionTable } from "./DataTable";
 import { ComparisonCard, FormulaCard, RelationshipCard } from "./StructuredViews";
 import { detectComparison, detectFormula, detectRelationship, type Comparison, type Formula, type Relationship } from "./structure";
 import type { CorpusChunk } from "@/data/corpus";
+import TableChart from "@/components/lesson/TableChart";
 
 // Turns approved material into a designed lesson.
 //
@@ -265,7 +266,14 @@ function Section({
       )}
 
       {tables.map((t, i) => (
-        <DataTable key={i} table={t} />
+        <div key={i}>
+          {/* The graph first, then the numbers. A student who cannot yet read a
+              table can read a shape, and a student who is asked to find a value
+              still needs the value — so the table stays. TableChart renders
+              nothing at all when the table is not data (see toChart). */}
+          <TableChart table={t} />
+          <DataTable table={t} />
+        </div>
       ))}
 
       {visual && <ConceptVisual kind={visual} />}
