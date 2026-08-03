@@ -37,13 +37,26 @@ for (const t of TABLES) {
   totals[t] = count ?? 0;
 }
 
-const rows: string[][] = [["WHO", "ROLE", ...TABLES.map((t) => t.replace("corpus_", "").replace("_", " "))]];
-rows.push(["everything there is", "—", ...TABLES.map((t) => String(totals[t]))]);
+// Which sections each person is in. A student's counts mean nothing without
+// it — "1 document" is only readable next to "enrolled in 7A, which has the
+// Moments deck".
+const classes = must(await db.from("classes").select("id, section_name"), "classes");
+const enrolments = must(await db.from("class_enrollments").select("student_id, class_id"), "enrolments");
+const sectionsFor = (id: string) =>
+  enrolments
+    .filter((e) => e.student_id === id)
+    .map((e) => classes.find((c) => c.id === e.class_id)?.section_name ?? "?")
+    .sort()
+    .join(", ") || "—";
+
+const columns = TABLES.map((t) => t.replace("corpus_", "").replace("_", " "));
+const rows: string[][] = [["WHO", "ROLE", "IN", ...columns]];
+rows.push(["everything there is", "—", "—", ...TABLES.map((t) => String(totals[t]))]);
 
 for (const p of people) {
   const email = emailFor(p.id);
   if (!email) {
-    rows.push([p.display_name ?? "?", String(p.role), ...TABLES.map(() => "no auth row")]);
+    rows.push([p.display_name ?? "?", String(p.role), sectionsFor(p.id), ...TABLES.map(() => "no auth row")]);
     continue;
   }
   const me = await asUser(email, env);
@@ -56,7 +69,7 @@ for (const p of people) {
     const { count, error } = await me.from(t).select("*", { count: "exact" }).limit(1);
     cells.push(error ? `ERR ${error.message.slice(0, 40)}` : String(count ?? 0));
   }
-  rows.push([p.display_name ?? "?", String(p.role), ...cells]);
+  rows.push([p.display_name ?? "?", String(p.role), sectionsFor(p.id), ...cells]);
   await me.auth.signOut();
 }
 
