@@ -27,9 +27,18 @@ const CHUNKS = [
   chunk("c2", "Everyday levers", "A spanner makes a nut easier to turn."),
 ];
 
-function render(overrides: VisualOverride[] = [], canEdit = false) {
+function render(
+  overrides: VisualOverride[] = [],
+  canEdit = false,
+  suggestions: { chunkId: string; visual: string; reason: string }[] = [],
+) {
   return renderToStaticMarkup(
-    <LessonSections chunks={CHUNKS} visualOverrides={overrides} canEditVisuals={canEdit} />,
+    <LessonSections
+      chunks={CHUNKS}
+      visualOverrides={overrides}
+      visualSuggestions={suggestions}
+      canEditVisuals={canEdit}
+    />,
   );
 }
 
@@ -71,5 +80,40 @@ describe("lesson visuals", () => {
     // never saved.
     const html = render([{ chunkId: "c1", visual: null }], true);
     expect(html).toContain("you turned it off");
+  });
+});
+
+describe("suggestions", () => {
+  const SUGGESTION = [
+    { chunkId: "c2", visual: "lever", reason: "This section is about balancing a spanner on a nut." },
+  ];
+
+  it("never reaches a reader who cannot act on it", () => {
+    // The load-bearing test. A suggestion is unreviewed machine output, and
+    // the product's one promise is that nothing reaches a child before a
+    // teacher has approved it. The page does not fetch these for a student;
+    // this checks the component would not render them even if it did.
+    const html = render([], false, SUGGESTION);
+    expect(html).not.toContain("Suggested illustration");
+    expect(html).not.toContain("balancing a spanner");
+  });
+
+  it("shows the teacher what was proposed and why", () => {
+    const html = render([], true, SUGGESTION);
+    expect(html).toContain("Suggested illustration");
+    expect(html).toContain("Balance a beam");
+    // The reason is the basis on which they say yes without reopening the deck.
+    expect(html).toContain("balancing a spanner");
+    expect(html).toContain("Add it");
+  });
+
+  it("says out loud that nothing has changed yet", () => {
+    expect(render([], true, SUGGESTION)).toContain("can&#x27;t see this until you add it");
+  });
+
+  it("does not propose anything for a section that has no suggestion", () => {
+    const html = render([], true, SUGGESTION);
+    // One card, on c2 only — not one under every section.
+    expect(html.split("Suggested illustration")).toHaveLength(2);
   });
 });

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import ReadingText, { type Glossary } from "@/components/reading/ReadingText";
-import ConceptVisual, { assignVisuals, VISUAL_IDS, type VisualKind } from "./visuals/ConceptVisual";
+import ConceptVisual from "./visuals/ConceptVisual";
+import { assignVisuals, VISUAL_IDS, type VisualKind } from "@/lib/visuals/catalogue";
 import DataTable, { type SectionTable } from "./DataTable";
 import { ComparisonCard, FormulaCard, RelationshipCard } from "./StructuredViews";
 import { detectComparison, detectFormula, detectRelationship, type Comparison, type Formula, type Relationship } from "./structure";
@@ -11,6 +12,7 @@ import type { CorpusChunk } from "@/data/corpus";
 import TableChart from "@/components/lesson/TableChart";
 import VisualPicker from "@/components/teacher/VisualPicker";
 import { dedupe, resolveVisuals, type Resolved, type VisualOverride } from "@/lib/visuals/resolve";
+import { pageOf } from "@/lib/lesson/page-of";
 
 // Turns approved material into a designed lesson.
 //
@@ -36,6 +38,7 @@ export default function LessonSections({
   glossary,
   translationBySection,
   visualOverrides = [],
+  visualSuggestions = [],
   canEditVisuals = false,
 }: {
   chunks: CorpusChunk[];
@@ -49,6 +52,10 @@ export default function LessonSections({
   // What the teacher has said about each section's interactive, where they
   // have said anything.
   visualOverrides?: VisualOverride[];
+  // What the model proposed for the bare sections. Fetched only for a reader
+  // who can act on them, so a student is never sent unreviewed machine output
+  // even in the page's own props.
+  visualSuggestions?: { chunkId: string; visual: string; reason: string }[];
   // Whether to offer the picker. The teacher edits the lesson in the lesson
   // itself rather than on a separate review screen: the question is "does this
   // diagram belong beside this paragraph", and that is only answerable while
@@ -128,18 +135,13 @@ export default function LessonSections({
               tables={tablesFor(chunk)}
               visual={visuals[index]}
               canEditVisual={canEditVisuals}
+              suggestion={visualSuggestions.find((s) => s.chunkId === chunk.id)}
             />
           ))}
         </div>
       ))}
     </div>
   );
-}
-
-// The page number a chunk came from lives only in its citation string.
-function pageOf(source: string): number {
-  const match = /Page\/Section\s+(\d+)\s*$/.exec(source);
-  return match ? Number(match[1]) : -1;
 }
 
 function Section({
@@ -149,6 +151,7 @@ function Section({
   tables,
   visual,
   canEditVisual,
+  suggestion,
   glossary,
   translation,
 }: {
@@ -158,6 +161,7 @@ function Section({
   tables: SectionTable[];
   visual: Resolved;
   canEditVisual: boolean;
+  suggestion?: { visual: string; reason: string };
   glossary?: Glossary;
   translation?: string;
 }) {
@@ -306,7 +310,9 @@ function Section({
 
       {/* Only the teacher who uploaded this deck sees the control, and only
           they can act on it — the check that matters is in the RPC, not here. */}
-      {canEditVisual && <VisualPicker chunkId={chunk.id} heading={heading} resolved={visual} />}
+      {canEditVisual && (
+        <VisualPicker chunkId={chunk.id} heading={heading} resolved={visual} suggestion={suggestion} />
+      )}
     </motion.section>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assignVisuals, visualFor } from "./visuals/ConceptVisual";
+import { assignVisuals, visualFor } from "@/lib/visuals/catalogue";
 
 // A visual is a claim. Matching the wrong one to a section teaches something
 // the teacher never approved, so these tests pin both directions: the

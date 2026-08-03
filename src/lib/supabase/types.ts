@@ -52,6 +52,18 @@ export type Database = {
         Update: { count?: number; last_seen?: string; detail?: string | null };
         Relationships: [];
       };
+      // What the model proposed for a bare section (0045). Deliberately NOT
+      // section_visuals: until a teacher accepts one, it has changed no lesson
+      // and no student can read it.
+      section_visual_suggestions: {
+        Row: {
+          chunk_id: string; visual: string; reason: string; model: string | null;
+          created_at: string; dismissed_at: string | null; dismissed_by: string | null;
+        };
+        Insert: { chunk_id: string; visual: string; reason: string; model?: string | null };
+        Update: { dismissed_at?: string | null; dismissed_by?: string | null };
+        Relationships: [];
+      };
       // A teacher's override of a section's interactive (0040). Students read
       // it through RLS; only the RPC writes.
       section_visuals: {
@@ -594,6 +606,12 @@ export type Database = {
       // write-once at upload until then.
       // Which interactive a section shows (0040). Three states — see
       // lib/visuals/resolve.ts for why null and "no row" differ.
+      // "No thanks" to a proposal (0045). Not the same as hiding a visual —
+      // see the migration.
+      teacher_dismiss_visual_suggestion: {
+        Args: { p_chunk_id: string };
+        Returns: unknown;
+      };
       teacher_set_section_visual: {
         Args: { p_chunk_id: string; p_visual: string | null; p_explicit?: boolean };
         Returns: unknown;

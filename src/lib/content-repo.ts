@@ -11,6 +11,9 @@ import { ZH_TRANSLATIONS } from "@/data/translations-zh";
 import { MOMENTS_BANK, DISTANCE_TIME_BANK, type PracticeItem } from "@/data/practice-banks";
 import type { VisualOverride } from "@/lib/visuals/resolve";
 
+/** A proposal waiting for a teacher's yes or no. */
+export type StoredSuggestion = { chunkId: string; visual: string; reason: string };
+
 // A data-access abstraction over the approved-material corpus, translations,
 // and practice banks (ROADMAP.md Phase 0). Every method is async on purpose,
 // even though today's implementation is a synchronous read of static files —
@@ -56,6 +59,13 @@ export interface ContentRepository {
    * keeps whatever matching picks — see lib/visuals/resolve.ts.
    */
   getSectionVisuals(chunkIds: string[]): Promise<VisualOverride[]>;
+  /**
+   * What the model proposed for sections matching left bare, minus anything
+   * the teacher has already waved away.
+   *
+   * Staff-facing only. The caller decides who is asking; this just reads.
+   */
+  getSectionSuggestions(chunkIds: string[]): Promise<StoredSuggestion[]>;
   getPracticeBank(topicId: string): Promise<PracticeItem[]>;
 }
 
@@ -96,6 +106,9 @@ class FileContentRepository implements ContentRepository {
   async getSectionVisuals(): Promise<VisualOverride[]> {
     return [];
   }
+  async getSectionSuggestions(): Promise<StoredSuggestion[]> {
+    return [];
+  }
   async getPracticeBank(topicId: string): Promise<PracticeItem[]> {
     if (topicId === "moments") return MOMENTS_BANK;
     if (topicId === "distance-time") return DISTANCE_TIME_BANK;
@@ -124,23 +137,9 @@ class FileContentRepository implements ContentRepository {
 // exposed by document id rather than by the viewer's enrolment. Once student
 // auth lands, getTopics()/getCorpusForTopic() should filter by the sections
 // the student is actually enrolled in (class_enrollments).
-// A lesson has to read in document order. Postgres returns rows in whatever
-// order it pleases without an ORDER BY, which was presenting a deck as
-// slides 17, 18, 33, 3 — the material arrived shuffled, so the sections
-// contradicted each other and no explanation built on the one before it.
-//
-// The page number currently survives only inside the citation string that
-// ingestion generates ("<file> — Page/Section 17"), so ordering parses it
-// back out. A dedicated page_or_section column would be the cleaner home for
-// it; this needs no migration and no backfill of already-uploaded documents,
-// and the string is one we produce rather than one we found.
-//
-// Anything unparseable sorts last rather than to the front, so a malformed
-// citation can never displace the opening section of a lesson.
-export function pageOf(citation: string): number {
-  const match = /Page\/Section\s+(\d+)\s*$/.exec(citation);
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
-}
+import { pageOf } from "@/lib/lesson/page-of";
+// Re-exported: page-order.test.ts and earlier callers found it here.
+export { pageOf };
 
 class PostgresContentRepository implements ContentRepository {
   private files = new FileContentRepository();
@@ -327,6 +326,25 @@ class PostgresContentRepository implements ContentRepository {
       return [];
     }
     return (data ?? []).map((r) => ({ chunkId: r.chunk_id as string, visual: (r.visual as string | null) ?? null }));
+  }
+
+  async getSectionSuggestions(chunkIds: string[]): Promise<StoredSuggestion[]> {
+    if (chunkIds.length === 0) return [];
+    const { data, error } = await supabaseAdmin()
+      .from("section_visual_suggestions")
+      .select("chunk_id, visual, reason")
+      .in("chunk_id", chunkIds)
+      .is("dismissed_at", null);
+    if (error) {
+      // The lesson is complete without them; a proposal is an extra.
+      console.error("[content-repo] visual suggestions lookup failed:", error);
+      return [];
+    }
+    return (data ?? []).map((r) => ({
+      chunkId: r.chunk_id as string,
+      visual: r.visual as string,
+      reason: r.reason as string,
+    }));
   }
 
   async getPracticeBank(topicId: string): Promise<PracticeItem[]> {

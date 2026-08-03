@@ -8,7 +8,7 @@
 // The counting lives in Postgres (see 0032) because it has to survive cold
 // starts and coordinate across regions. The judgement lives here.
 
-export type AiKind = "tutor" | "translate";
+export type AiKind = "tutor" | "translate" | "suggest";
 
 /**
  * Calls per person per day, by kind.
@@ -25,6 +25,12 @@ export type AiKind = "tutor" | "translate";
 export const DAILY_PER_PERSON: Record<AiKind, { student: number; staff: number }> = {
   tutor: { student: 60, staff: 200 },
   translate: { student: 60, staff: 300 },
+  // Suggesting illustrations is one call per DECK, not per section, and only
+  // a teacher can start it. Twenty is more decks than anyone uploads in a day.
+  // Zero for students is not a limit so much as a statement: no student-facing
+  // path reaches this, and if one ever does, it stops here rather than in a
+  // code review.
+  suggest: { student: 0, staff: 20 },
 };
 
 /**

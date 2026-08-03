@@ -35,7 +35,6 @@ if (auth.error) throw new Error(`listUsers failed: ${auth.error.message}`);
 const emailFor = (id: string) => auth.data.users.find((u) => u.id === id)?.email ?? "";
 
 const people = must(await db.from("users").select("id, role, display_name").order("role"), "users");
-const classes = must(await db.from("classes").select("id, section_name"), "classes");
 const enrolments = must(await db.from("class_enrollments").select("student_id, class_id"), "enrolments");
 const links = must(await db.from("corpus_document_sections").select("document_id, class_id"), "document sections");
 
