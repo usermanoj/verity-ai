@@ -39,6 +39,25 @@ export async function POST(req: NextRequest) {
     };
 
     const supabase = await supabaseServer();
+
+    // Which deck this answer was about.
+    //
+    // The column has existed since 0028 and nothing has ever written to it:
+    // every one of the first thirty-two attempts recorded stored null. Nobody
+    // noticed because nothing read it — until the per-topic breakdown did, and
+    // would have shown every teacher an empty panel forever.
+    //
+    // Derived here rather than sent by the client: the browser knows the
+    // topic, but a figure a teacher acts on should not be something a page can
+    // assert about itself. Looked up through the generated question, which is
+    // the only link that exists — and stored rather than re-derived at read
+    // time, because regenerating a deck deletes its questions and that is
+    // precisely the case the snapshot columns below exist for.
+    //
+    // Null for the two seeded demo topics, whose hand-authored banks reference
+    // no document. That is the right answer, not a gap.
+    const documentId = await documentFor(supabase, UUID.test(questionId) ? questionId : null);
+
     const { error } = await supabase.from("practice_attempts").insert({
       student_id: user.id,
       question_id: questionId,
@@ -58,6 +77,7 @@ export async function POST(req: NextRequest) {
       // because a teacher tidied their uploads.
       question_prompt: prompt?.slice(0, 500) ?? null,
       question_level: level ?? null,
+      document_id: documentId,
     });
 
     // The insert's result used to be discarded, so this route answered
@@ -75,5 +95,35 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[api/practice/attempt] threw:", err);
     return NextResponse.json({ logged: false });
+  }
+}
+
+/**
+ * The document a generated question belongs to, or null.
+ *
+ * Never throws. This runs inside a route whose whole contract is that a
+ * logging failure must not reach a child mid-question — losing the topic is a
+ * thinner analytic, losing the answer is losing evidence about a pupil.
+ */
+async function documentFor(
+  supabase: Awaited<ReturnType<typeof supabaseServer>>,
+  generatedQuestionId: string | null,
+): Promise<string | null> {
+  if (!generatedQuestionId) return null;
+  try {
+    const { data, error } = await supabase
+      .from("generated_questions")
+      .select("chunk_id, corpus_chunks(document_id)")
+      .eq("id", generatedQuestionId)
+      .maybeSingle();
+    if (error) {
+      console.error("[api/practice/attempt] topic lookup failed:", error.message);
+      return null;
+    }
+    const chunk = (data as { corpus_chunks?: { document_id?: string } | null } | null)?.corpus_chunks;
+    return chunk?.document_id ?? null;
+  } catch (err) {
+    console.error("[api/practice/attempt] topic lookup threw:", err);
+    return null;
   }
 }
