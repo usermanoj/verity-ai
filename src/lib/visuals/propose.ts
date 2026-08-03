@@ -28,7 +28,19 @@ const SuggestionSchema = z.object({
   reason: z.string().describe("One short sentence for the teacher: what in this section it illustrates"),
 });
 
-export type ProposeResult = { suggestions: Suggestion[]; model: string };
+export type ProposeResult = {
+  suggestions: Suggestion[];
+  /**
+   * How many the model actually returned, before any were dropped.
+   *
+   * Without this, "suggested: 0" means either "the model had no opinion" or
+   * "it had four and every one was thrown away" — and those call for opposite
+   * fixes. A run that cannot tell them apart can only be guessed at, which is
+   * how the first version of this prompt was tuned in the wrong direction.
+   */
+  proposed: number;
+  model: string;
+};
 
 /**
  * Asks for interactives for the sections matching left bare.
@@ -45,7 +57,7 @@ export async function proposeVisuals(
   const model = aiModel("question");
   const modelId = typeof model === "string" ? model : model.modelId;
 
-  if (sections.length === 0) return { suggestions: [], model: modelId };
+  if (sections.length === 0) return { suggestions: [], proposed: 0, model: modelId };
 
   const { output } = await withRateLimitRetry(() =>
     generateText({
@@ -66,15 +78,13 @@ export async function proposeVisuals(
     }),
   );
 
+  const raw = output.suggestions ?? [];
+
   return {
     // Untrusted from here backwards: an invented id, a section that was never
     // offered, the same visual twice — all dropped rather than repaired.
-    suggestions: keepValidSuggestions(
-      output.suggestions ?? [],
-      sections,
-      catalogue.map((v) => v.id),
-      alreadyShowing,
-    ),
+    suggestions: keepValidSuggestions(raw, sections, catalogue.map((v) => v.id), alreadyShowing),
+    proposed: raw.length,
     model: modelId,
   };
 }
