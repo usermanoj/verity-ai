@@ -4,7 +4,7 @@ import { atLeast } from "@/lib/roles";
 import { hasSupabase } from "@/lib/supabase/config";
 import { supabaseServer } from "@/lib/supabase/server";
 import { reportError } from "@/lib/errors/report";
-import { VISUAL_IDS } from "@/components/topic/visuals/ConceptVisual";
+import { VISUAL_IDS } from "@/lib/visuals/catalogue";
 
 export const runtime = "nodejs";
 

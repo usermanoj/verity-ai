@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { VISUALS } from "@/components/topic/visuals/ConceptVisual";
+import { VISUALS } from "@/lib/visuals/catalogue";
 import type { Resolved } from "@/lib/visuals/resolve";
 import { PRESSABLE } from "@/lib/ui";
 
@@ -23,10 +23,17 @@ export default function VisualPicker({
   chunkId,
   heading,
   resolved,
+  suggestion,
 }: {
   chunkId: string;
   heading: string;
   resolved: Resolved;
+  /**
+   * What the model proposed for this section, if anything and if the teacher
+   * has not already waved it away. Never present for a student — the topic
+   * page does not fetch these unless the reader can edit.
+   */
+  suggestion?: { visual: string; reason: string };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -40,6 +47,28 @@ export default function VisualPicker({
       : current
         ? `${current.label}${resolved.source === "automatic" ? " · chosen by matching" : ""}`
         : "No illustration";
+
+  async function dismiss() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/materials/dismiss-suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chunkId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Couldn't save that.");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Network problem — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function save(body: { visual?: string | null; automatic?: boolean }) {
     setBusy(true);
@@ -64,9 +93,43 @@ export default function VisualPicker({
     }
   }
 
+  const proposed = suggestion ? VISUALS.find((v) => v.id === suggestion.visual) : undefined;
+
   if (!open) {
     return (
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+      <div className="mt-1 space-y-2">
+        {/* A proposal, not a change. Nothing has been added to the lesson and
+            no student can see this — the model read the section and the
+            teacher decides. The reason is the point: it is the whole basis on
+            which they can say yes without re-reading the deck. */}
+        {proposed && suggestion && (
+          <div className="rounded-xl border border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.07)] p-3">
+            <div className="text-xs text-[var(--brand2)]">
+              Suggested illustration · <span className="text-[var(--text)]">{proposed.label}</span>
+            </div>
+            <p className="mt-1 text-xs text-[var(--muted)]">{suggestion.reason}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <button
+                onClick={() => void save({ visual: suggestion.visual })}
+                disabled={busy}
+                className={`rounded-lg bg-[var(--brand)] px-3 py-1 font-medium text-white disabled:opacity-60 ${PRESSABLE}`}
+              >
+                Add it
+              </button>
+              <button
+                onClick={() => void dismiss()}
+                disabled={busy}
+                className={`rounded-lg border border-[var(--border)] px-3 py-1 text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-60 ${PRESSABLE}`}
+              >
+                No thanks
+              </button>
+              <span className="text-[var(--muted)]">Students can&apos;t see this until you add it.</span>
+            </div>
+            {error && <p className="mt-2 text-xs text-[var(--warn)]">{error}</p>}
+          </div>
+        )}
+
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-[var(--muted)]">{state}</span>
         <button
           onClick={() => {
@@ -77,6 +140,7 @@ export default function VisualPicker({
         >
           Change
         </button>
+        </div>
       </div>
     );
   }

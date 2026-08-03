@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import AiTutorPanel from "@/components/tutor/AiTutorPanel";
 import LessonSections from "@/components/topic/LessonSections";
+import SuggestVisualsButton from "@/components/teacher/SuggestVisualsButton";
 import LessonNav from "@/components/topic/LessonNav";
 import HashTarget from "@/components/topic/HashTarget";
 import PracticeZone from "@/components/practice/PracticeZone";
@@ -64,6 +65,14 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
   // a colleague's lesson yours to redecorate, which is also what the RPC
   // enforces; this only decides whether the control is drawn.
   const canEditVisuals = Boolean(topic.uploadedBy) && topic.uploadedBy === user?.id;
+
+  // Fetched only for someone who can act on them. A suggestion is unreviewed
+  // machine output, and the promise this product makes is that nothing reaches
+  // a child before a teacher has approved it — so it does not travel to the
+  // browser at all unless that browser belongs to the teacher.
+  const visualSuggestions = canEditVisuals
+    ? await contentRepo.getSectionSuggestions(chunks.map((c) => c.id))
+    : [];
 
   // Keyed by source hash in the database, by chunk id for the client: the
   // lesson components are client-side and cannot hash, and this page is a
@@ -148,6 +157,7 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.15fr_1fr]">
         <div className="space-y-6">
+          {canEditVisuals && <SuggestVisualsButton documentId={topicId} />}
           {/* A Map can't cross the server/client boundary, so it goes over as
               a plain object keyed by page number. */}
           <LessonSections
@@ -157,6 +167,7 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
             glossary={glossary}
             translationBySection={translationBySection}
             visualOverrides={visualOverrides}
+            visualSuggestions={visualSuggestions}
             canEditVisuals={canEditVisuals}
           />
 
