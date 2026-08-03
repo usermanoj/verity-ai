@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
     ).filter((s) => !asked.has(s.chunkId));
 
     if (eligible.length === 0) {
-      return NextResponse.json({ ok: true, suggested: 0, considered: 0 });
+      return NextResponse.json({ ok: true, suggested: 0, proposed: 0, considered: 0 });
     }
 
     // Counted only now, because everything above can refuse for free and a
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { suggestions, model } = await proposeVisuals(
+    const { suggestions, proposed, model } = await proposeVisuals(
       eligible,
       VISUALS,
       resolved.map((r) => r.visual).filter((v): v is string => v !== null),
@@ -133,7 +133,15 @@ export async function POST(req: NextRequest) {
       if (writeError) throw writeError;
     }
 
-    return NextResponse.json({ ok: true, suggested: suggestions.length, considered: eligible.length });
+    // `proposed` is not decoration. Without it, suggested: 0 means either the
+    // model had no opinion or it had four and the filter took all of them, and
+    // those call for opposite fixes.
+    return NextResponse.json({
+      ok: true,
+      suggested: suggestions.length,
+      proposed,
+      considered: eligible.length,
+    });
   } catch (err) {
     await reportError("ingest", err, "could not suggest visuals for a document");
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });

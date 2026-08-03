@@ -33,6 +33,7 @@ export default function SuggestVisualsButton({ documentId }: { documentId: strin
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         suggested?: number;
+        proposed?: number;
         considered?: number;
       };
       if (!res.ok) {
@@ -40,13 +41,20 @@ export default function SuggestVisualsButton({ documentId }: { documentId: strin
         return;
       }
       const n = data.suggested ?? 0;
+      const proposed = data.proposed ?? 0;
       const considered = data.considered ?? 0;
+      // "Nothing fitted" and "it wanted to repeat an illustration this lesson
+      // already uses" are different answers, and the second one is worth
+      // saying: it tells a teacher the section is not hopeless, it is just
+      // already covered elsewhere in their own deck.
       setMessage(
         considered === 0
           ? "Every section already has an illustration or an answer from you."
-          : n === 0
-            ? `Looked at ${considered} section${considered === 1 ? "" : "s"} and nothing fitted. That's a normal answer.`
-            : `${n} suggestion${n === 1 ? "" : "s"} added below — nothing is shown to students until you accept.`,
+          : n === 0 && proposed > 0
+            ? `Looked at ${considered} sections. The ${proposed} it wanted to use are already shown elsewhere in this lesson, so nothing was added.`
+            : n === 0
+              ? `Looked at ${considered} section${considered === 1 ? "" : "s"} and nothing fitted. That's a normal answer.`
+              : `${n} suggestion${n === 1 ? "" : "s"} added below — nothing is shown to students until you accept.`,
       );
       router.refresh();
     } catch {

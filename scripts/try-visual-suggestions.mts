@@ -93,14 +93,15 @@ const eligible = sectionsNeedingSuggestion(
 );
 console.log(`\n${eligible.length} section(s) with nothing. Asking the model…`);
 
-const { suggestions, model } = await proposeVisuals(
+const { suggestions, proposed, model } = await proposeVisuals(
   eligible,
   VISUALS,
   resolved.map((r) => r.visual).filter((v): v is string => v !== null),
 );
 
 console.log(`\nMODEL: ${model}`);
-console.log(`SUGGESTED: ${suggestions.length}\n`);
+console.log(`PROPOSED:  ${proposed}  (what the model returned)`);
+console.log(`SUGGESTED: ${suggestions.length}  (what survived the filter)`);
 
 for (const s of suggestions) {
   const c = chunks.find((x) => x.id === s.chunkId)!;
