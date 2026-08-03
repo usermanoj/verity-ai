@@ -38,7 +38,7 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!url || !key) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local");
 const db = createClient(url, key);
 
-const must = <T>(r: { data: T | null; error: { message: string } | null }, what: string): T => {
+const must = <T,>(r: { data: T | null; error: { message: string } | null }, what: string): T => {
   if (r.error) throw new Error(`${what} failed: ${r.error.message}`);
   if (r.data === null) throw new Error(`${what} returned nothing and no error — does that table exist?`);
   return r.data;
