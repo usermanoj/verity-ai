@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import ReadingText, { type Glossary } from "@/components/reading/ReadingText";
-import ConceptVisual, { assignVisuals, type VisualKind } from "./visuals/ConceptVisual";
+import ConceptVisual, { assignVisuals, VISUAL_IDS, type VisualKind } from "./visuals/ConceptVisual";
 import DataTable, { type SectionTable } from "./DataTable";
 import { ComparisonCard, FormulaCard, RelationshipCard } from "./StructuredViews";
 import { detectComparison, detectFormula, detectRelationship, type Comparison, type Formula, type Relationship } from "./structure";
 import type { CorpusChunk } from "@/data/corpus";
 import TableChart from "@/components/lesson/TableChart";
+import VisualPicker from "@/components/teacher/VisualPicker";
+import { dedupe, resolveVisuals, type Resolved, type VisualOverride } from "@/lib/visuals/resolve";
 
 // Turns approved material into a designed lesson.
 //
@@ -33,6 +35,8 @@ export default function LessonSections({
   tablesByPage = {},
   glossary,
   translationBySection,
+  visualOverrides = [],
+  canEditVisuals = false,
 }: {
   chunks: CorpusChunk[];
   mediaByPage?: Record<number, SectionMedia[]>;
@@ -42,6 +46,14 @@ export default function LessonSections({
   // Chinese for a section, keyed by chunk id. Written when the teacher
   // approved the document, so it is reviewed before any student reads it.
   translationBySection?: Record<string, string>;
+  // What the teacher has said about each section's interactive, where they
+  // have said anything.
+  visualOverrides?: VisualOverride[];
+  // Whether to offer the picker. The teacher edits the lesson in the lesson
+  // itself rather than on a separate review screen: the question is "does this
+  // diagram belong beside this paragraph", and that is only answerable while
+  // looking at the paragraph.
+  canEditVisuals?: boolean;
 }) {
   const mediaFor = (c: CorpusChunk) => mediaByPage[pageOf(c.source)] ?? [];
   const tablesFor = (c: CorpusChunk) => tablesByPage[pageOf(c.source)] ?? [];
@@ -49,7 +61,7 @@ export default function LessonSections({
   // Decided across the whole lesson, not per section: a concept earns its
   // interactive once. Five sections about electromagnets used to render five
   // identical coil widgets, which reads as automation rather than authorship.
-  const visuals = assignVisuals(
+  const matched = assignVisuals(
     chunks.map((c) => {
       const heading = c.heading?.trim() ?? "";
       return {
@@ -61,6 +73,17 @@ export default function LessonSections({
         hasMedia: mediaFor(c).some((m) => m.kind !== "slide"),
       };
     }),
+  );
+
+  // Then the teacher's corrections on top, and the once-per-lesson rule again
+  // afterwards — an override can reintroduce a duplicate the matcher avoided.
+  const visuals = dedupe(
+    resolveVisuals(
+      chunks.map((c) => c.id),
+      matched,
+      visualOverrides,
+      VISUAL_IDS,
+    ),
   );
 
   // Consecutive sections sharing a module become one part of the lesson.
@@ -104,6 +127,7 @@ export default function LessonSections({
               media={mediaFor(chunk)}
               tables={tablesFor(chunk)}
               visual={visuals[index]}
+              canEditVisual={canEditVisuals}
             />
           ))}
         </div>
@@ -124,6 +148,7 @@ function Section({
   media,
   tables,
   visual,
+  canEditVisual,
   glossary,
   translation,
 }: {
@@ -131,7 +156,8 @@ function Section({
   index: number;
   media: SectionMedia[];
   tables: SectionTable[];
-  visual: VisualKind | null;
+  visual: Resolved;
+  canEditVisual: boolean;
   glossary?: Glossary;
   translation?: string;
 }) {
@@ -276,7 +302,11 @@ function Section({
         </div>
       ))}
 
-      {visual && <ConceptVisual kind={visual} />}
+      {visual.visual && <ConceptVisual kind={visual.visual as VisualKind} />}
+
+      {/* Only the teacher who uploaded this deck sees the control, and only
+          they can act on it — the check that matters is in the RPC, not here. */}
+      {canEditVisual && <VisualPicker chunkId={chunk.id} heading={heading} resolved={visual} />}
     </motion.section>
   );
 }

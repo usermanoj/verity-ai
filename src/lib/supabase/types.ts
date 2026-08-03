@@ -52,6 +52,14 @@ export type Database = {
         Update: { count?: number; last_seen?: string; detail?: string | null };
         Relationships: [];
       };
+      // A teacher's override of a section's interactive (0040). Students read
+      // it through RLS; only the RPC writes.
+      section_visuals: {
+        Row: { chunk_id: string; visual: string | null; set_by: string | null; set_at: string };
+        Insert: { chunk_id: string; visual?: string | null; set_by?: string | null; set_at?: string };
+        Update: { visual?: string | null; set_by?: string | null; set_at?: string };
+        Relationships: [];
+      };
       // Per-person, per-day AI call counter (0032). Written only through
       // claim_ai_call; nothing reads it through RLS.
       ai_usage: {
@@ -584,6 +592,12 @@ export type Database = {
       // scoped to the caller's own uploads.
       // Change which of a teacher's classes a deck reaches (0038). Was
       // write-once at upload until then.
+      // Which interactive a section shows (0040). Three states — see
+      // lib/visuals/resolve.ts for why null and "no row" differ.
+      teacher_set_section_visual: {
+        Args: { p_chunk_id: string; p_visual: string | null; p_explicit?: boolean };
+        Returns: unknown;
+      };
       teacher_set_document_sections: {
         Args: { p_document_id: string; p_class_ids: string[] };
         Returns: unknown;

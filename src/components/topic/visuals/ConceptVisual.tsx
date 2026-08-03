@@ -33,6 +33,30 @@ export type VisualKind =
   | "grip"
   | "lever";
 
+/**
+ * Every visual, named for a teacher rather than for the code.
+ *
+ * The picker shows these. "grip" and "conductor" mean nothing to someone
+ * choosing an illustration for their lesson, and a list of slugs would make the
+ * override feature unusable by exactly the person it is for.
+ *
+ * VISUAL_IDS is the allow-list the resolver checks an override against, so
+ * removing a visual here is enough — no migration, and an id that no longer
+ * ships degrades to no picture rather than a broken lesson.
+ */
+export const VISUALS: { id: VisualKind; label: string; blurb: string }[] = [
+  { id: "lever", label: "Balance a beam", blurb: "Load each side and watch the moments" },
+  { id: "field", label: "Field around a bar magnet", blurb: "Turn it in three dimensions" },
+  { id: "domains", label: "Magnetic domains", blurb: "Align them and watch magnetism appear" },
+  { id: "broken", label: "Breaking a magnet", blurb: "Every piece keeps two poles" },
+  { id: "electromagnet", label: "Electromagnet on and off", blurb: "Switch the current, drop the load" },
+  { id: "conductor", label: "Field around a straight wire", blurb: "Concentric circles, not loops" },
+  { id: "grip", label: "Right-hand grip rule", blurb: "Find the north end of a solenoid" },
+  { id: "distance", label: "Force against distance", blurb: "Closer means stronger" },
+];
+
+export const VISUAL_IDS: readonly VisualKind[] = VISUALS.map((v) => v.id);
+
 // Ordered most specific first, and the first match wins.
 //
 // The earlier version was not as conservative as its comment claimed. Two
