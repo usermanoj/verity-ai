@@ -668,6 +668,13 @@ export type Database = {
         Returns: unknown;
       };
       // One student's answers and requests, interleaved in time (0037).
+      // Per-topic and per-week attainment for one pupil (0046). Counts only —
+      // the thresholds that turn them into "strength" live in
+      // lib/student-breakdown.ts so they can be argued with.
+      teacher_student_breakdown: {
+        Args: { p_student_id: string };
+        Returns: unknown;
+      };
       teacher_student_timeline: {
         Args: { p_student_id: string };
         Returns: unknown;
