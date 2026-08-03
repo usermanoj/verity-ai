@@ -151,3 +151,74 @@ describe("visualFor — the lever", () => {
     expect(assignVisuals(sections).filter((k) => k === "lever")).toHaveLength(1);
   });
 });
+
+describe("the motion deck, verbatim", () => {
+  // Every heading and opening line below is copied from the school's real
+  // "4-Distance time graph.pptx". Before these rules existed the whole deck
+  // matched nothing: fourteen sections, no interactive, and the AI pass could
+  // not help because the library had nothing about motion in it.
+  const DECK: { heading: string; text: string }[] = [
+    {
+      heading: "Steady speed and reference points",
+      text: "Two passengers are sitting in a compartment of a moving train. Are they in motion with respect to each other? If a car covers a distance of 6m every second, is it in uniform or non-uniform motion?",
+    },
+    {
+      heading: "Graph of an object not moving",
+      text: "Your graph will look like this. The distance time graph of an object which is not moving is a horizontal line parallel to X-axis.",
+    },
+    {
+      heading: "Sketching a journey with pauses",
+      text: "I walked 5 m in 10 seconds, stopped for 10 seconds, then walked 5 m in 5 seconds. Sketch a distance- time graph to represent the journey.",
+    },
+    {
+      heading: "Gradient and speed",
+      text: "Slope or gradient of the distance time graph gives you speed.",
+    },
+    {
+      heading: "Worked example: gradient equals speed",
+      text: "Calculate the slope or gradient of this distance time graph between the points A and B. Slope = y2-y1 / x2-x1 = (150 -50)m / (3-1)s = 100/2 = 50 m/s",
+    },
+  ];
+
+  it("gives the gradient interactive to the section that works it out", () => {
+    expect(visualFor(DECK[4].heading, DECK[4].text)).toBe("gradient");
+    expect(visualFor(DECK[3].heading, DECK[3].text)).toBe("gradient");
+  });
+
+  it("gives the journey graph to the section that sketches one", () => {
+    expect(visualFor(DECK[2].heading, DECK[2].text)).toBe("journey");
+  });
+
+  it("illustrates the deck that used to get nothing at all", () => {
+    // The measure that matters: this deck scored zero before.
+    const assigned = assignVisuals(DECK.map((s) => ({ ...s, hasMedia: false })));
+    expect(assigned.filter(Boolean).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("still gives each interactive to only one section", () => {
+    const assigned = assignVisuals(DECK.map((s) => ({ ...s, hasMedia: false }))).filter(Boolean);
+    expect(new Set(assigned).size).toBe(assigned.length);
+  });
+});
+
+describe("the two families do not poach each other", () => {
+  it("keeps the magnetism force-distance section away from the motion rules", () => {
+    // "It is an example of a force acting at a distance" — the word distance
+    // in a magnetism deck must not summon a distance-time graph.
+    expect(
+      visualFor(
+        "Magnetic forces as non-contact forces",
+        "Magnetic forces are non-contact forces – this means that magnets affect each other without touching. It is an example of a force acting at a distance.",
+      ),
+    ).not.toBe("journey");
+  });
+
+  it("keeps a magnetic moment away from the motion rules", () => {
+    expect(visualFor("Magnetic moment", "The magnetic moment of a compass needle in a field.")).not.toBe("gradient");
+  });
+
+  it("does not put a see-saw on a section about steady speed", () => {
+    // The failure the model made twice, checked against the matcher too.
+    expect(visualFor("Steady speed of 10m/s", "Steady speed of 10m/s means, that the car travels a distance of 10m every second.")).not.toBe("lever");
+  });
+});

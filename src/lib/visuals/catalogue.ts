@@ -18,7 +18,9 @@ export type VisualKind =
   | "electromagnet"
   | "conductor"
   | "grip"
-  | "lever";
+  | "lever"
+  | "gradient"
+  | "journey";
 
 /**
  * Every visual, named for a teacher rather than for the code.
@@ -100,6 +102,25 @@ export const VISUALS: VisualEntry[] = [
     requires: /(solenoid|coil|current|grip)/i,
   },
   {
+    // Four of the fourteen sections in this school's motion deck are about the
+    // gradient — the largest cluster in the whole corpus with nothing to show
+    // for it, including a worked example the widget reproduces exactly.
+    id: "gradient",
+    label: "Slope of a distance-time graph",
+    blurb: "Move A and B, and read the speed off the gradient",
+    requires: /(gradient|slope|speed|distance[- ]time|motion graph)/i,
+  },
+  {
+    // Already built, for the hand-made demo topic, and unavailable to every
+    // uploaded deck since. Promoting it costs nothing and covers "I walked 5 m
+    // in 10 seconds, stopped for 10 seconds, then walked 5 m in 5 seconds"
+    // exactly.
+    id: "journey",
+    label: "Sketch a journey",
+    blurb: "Walk, stop, walk — and watch the graph draw itself",
+    requires: /(journey|distance[- ]time|motion|speed|stopped|not moving|walk)/i,
+  },
+  {
     // Two bar magnets and the field between them, so a section with no magnet
     // in it can never have this. That is the exact false positive that made
     // `requires` exist.
@@ -124,6 +145,23 @@ export const VISUAL_IDS: readonly VisualKind[] = VISUALS.map((v) => v.id);
 // So each rule now carries an `unless` guard naming the neighbouring concepts
 // it must yield to, and the specific concepts sit above the general ones.
 const RULES: { kind: VisualKind; when: RegExp; needs: RegExp; unless?: RegExp }[] = [
+  {
+    // Gradient first: "slope" and "gradient" are unambiguous in a motion deck,
+    // and this is the concept the deck returns to most.
+    kind: "gradient",
+    when: /(gradient|slope)/i,
+    needs: /(speed|distance|graph|calculate|m\/s)/i,
+    unless: /(magnet|pole|field line)/i,
+  },
+  {
+    // A journey with pauses, and the shapes a distance-time graph makes. The
+    // heading has to name the graph or the motion — "distance" alone is not
+    // enough, because a magnetism deck says "force acting at a distance".
+    kind: "journey",
+    when: /(distance[- ]?time|motion graph|journey|not moving|steady speed|uniform motion)/i,
+    needs: /(time|speed|graph|second|m\/s)/i,
+    unless: /(magnet|pole|solenoid|current)/i,
+  },
   {
     // Moments. First because "moment", "pivot" and "turning effect" are
     // unambiguous in a mechanics deck, and because until now this topic had no

@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { generatePracticeQuestions } from "@/lib/questions/generate";
 import { mapAiCalls } from "@/lib/ai";
 import { translateDocument } from "@/lib/translate/batch";
+import { suggestVisualsForDocument } from "@/lib/visuals/run";
 import { atLeast } from "@/lib/roles";
 
 export const runtime = "nodejs";
@@ -93,6 +94,20 @@ export async function POST(req: NextRequest) {
     // thirty model calls, and a floating promise would be torn down with the
     // invocation. Failure leaves the material perfectly usable in English.
     after(() => translateDocument(documentId));
+
+    // And propose interactives for the sections the matching rules left bare,
+    // so a deck arrives with its illustrations already thought about.
+    //
+    // The deterministic half needs nothing here: matching runs on every render
+    // and a data table draws itself as a graph. Only the model's half needed
+    // starting, and leaving that to a button meant every deck approved before
+    // anyone found the button stayed bare — the same failure the questions
+    // above had, for the same reason.
+    //
+    // One call for the whole document, and the result is a row in a table no
+    // student can read. Nothing here can change what a child sees; the teacher
+    // still accepts each one.
+    after(() => suggestVisualsForDocument(documentId).catch(() => {}));
   } else {
     // Rejected chunks shouldn't linger as if they might still be used.
     await admin.from("corpus_chunks").delete().eq("document_id", documentId);
