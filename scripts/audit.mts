@@ -5,7 +5,7 @@
  *   npx tsx scripts/audit.mts corpus classes
  *   npx tsx scripts/audit.mts pages --as=head@school.edu
  *
- * Sections: corpus · classes · students · pages · health
+ * Sections: corpus · classes · students · pages · visuals · health
  *
  * This replaces the throwaway probes that were retyped for every check. They
  * were wrong three times, always the same way — a failed query destructured as
@@ -23,7 +23,7 @@ import { adminClient, asUser, loadEnv, must, table } from "./lib/audit-db.mts";
 const args = process.argv.slice(2);
 const asEmail = args.find((a) => a.startsWith("--as="))?.slice(5);
 const requested = args.filter((a) => !a.startsWith("--"));
-const ALL = ["corpus", "classes", "students", "pages", "health"] as const;
+const ALL = ["corpus", "classes", "students", "pages", "visuals", "health"] as const;
 const sections = requested.length ? requested : [...ALL];
 
 const unknown = sections.filter((s) => !(ALL as readonly string[]).includes(s));
@@ -186,6 +186,55 @@ async function pages() {
   await me.auth.signOut();
 }
 
+// ────────────────────────────────────────────────────────────────── visuals
+//
+// Which sections a teacher has re-illustrated, and whether the gate holds.
+//
+// The gate is checked by CALLING it, not by looking for the function: an RPC
+// that exists and refuses everyone looks identical to one that works, until a
+// teacher tries to use it. The service role carries no auth.uid(), so this is
+// exactly the unauthenticated case, and the only correct answer is a refusal.
+async function visuals() {
+  heading("VISUALS");
+
+  const rows = must(await db.from("section_visuals").select("chunk_id, visual, set_by, set_at"), "section_visuals");
+  if (rows.length === 0) {
+    console.log("No teacher has overridden a section's illustration. Every lesson shows what matching picked.");
+  } else {
+    const chunks = must(await db.from("corpus_chunks").select("id, heading, document_id"), "corpus_chunks");
+    const docs = must(await db.from("corpus_documents").select("id, source_file"), "corpus_documents");
+    const staff = must(await db.from("users").select("id, display_name"), "users");
+    console.log(table([
+      ["DECK", "SECTION", "SHOWS", "SET BY"],
+      ...rows.map((r) => {
+        const c = chunks.find((x) => x.id === r.chunk_id);
+        return [
+          docs.find((d) => d.id === c?.document_id)?.source_file ?? "?",
+          c?.heading ?? "?",
+          r.visual ?? "(nothing — deliberately)",
+          staff.find((u) => u.id === r.set_by)?.display_name ?? "?",
+        ];
+      }),
+    ]));
+  }
+
+  // Any uuid: the role check runs before the ownership check, so a caller with
+  // no identity is refused before the chunk id is ever looked at.
+  const refused = await db.rpc("teacher_set_section_visual", {
+    p_chunk_id: "00000000-0000-0000-0000-000000000000",
+    p_visual: "lever",
+    p_explicit: true,
+  });
+  if (refused.error) throw new Error(`teacher_set_section_visual is missing or broken: ${refused.error.message}`);
+  const verdict = refused.data as { ok?: boolean; error?: string };
+  console.log("");
+  console.log(
+    verdict.ok
+      ? "⚠ a caller with no identity was ALLOWED to set a visual"
+      : `a caller with no identity is refused: ${verdict.error}`,
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────── health
 async function health() {
   heading("HEALTH");
@@ -207,6 +256,6 @@ async function health() {
   ]));
 }
 
-const run: Record<string, () => Promise<void>> = { corpus, classes, students, pages, health };
+const run: Record<string, () => Promise<void>> = { corpus, classes, students, pages, visuals, health };
 for (const s of sections) await run[s]();
 console.log();
