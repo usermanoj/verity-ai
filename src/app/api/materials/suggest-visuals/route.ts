@@ -6,23 +6,21 @@ import { hasSupabaseAdmin, supabaseAdmin } from "@/lib/supabase/admin";
 import { reportError } from "@/lib/errors/report";
 import { claimAiCall } from "@/lib/ai-usage";
 import { hasApiKey } from "@/lib/ai";
-import { contentRepo } from "@/lib/content-repo";
-import { pageOf } from "@/lib/lesson/page-of";
-import { VISUALS, VISUAL_IDS, assignVisuals } from "@/lib/visuals/catalogue";
-import { dedupe, resolveVisuals } from "@/lib/visuals/resolve";
-import { sectionsNeedingSuggestion } from "@/lib/visuals/suggest";
-import { proposeVisuals } from "@/lib/visuals/propose";
+import { suggestVisualsForDocument } from "@/lib/visuals/run";
 
 export const runtime = "nodejs";
 // A deck of thirty sections is one model call, but a slow one.
 export const maxDuration = 60;
 
-// Asking the model what the bare sections could be illustrated with.
+// Asking again, on demand.
 //
-// Nothing here changes a lesson. Suggestions go into their own table
-// (section_visual_suggestions, 0045) which no student can read, and become
-// visible to a child only if the teacher accepts one through the picker. That
-// is the whole point of the feature and the reason it is two tables.
+// The pass now runs by itself when a document is approved (see
+// api/ingest/review), so this is the second bite: material approved before the
+// feature existed, a deck whose sections have changed, or a teacher who wants
+// another look after dismissing something.
+//
+// Nothing here changes a lesson. Suggestions go to their own table, which no
+// student can read, and reach a child only when the teacher accepts one.
 //
 // Ownership is checked before the model is called, not after. The check is
 // free and the call is not.
@@ -44,73 +42,21 @@ export async function POST(req: NextRequest) {
   if (!body?.documentId || typeof body.documentId !== "string") {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
-  const documentId = body.documentId;
 
   try {
-    const db = supabaseAdmin();
-
     // Their own upload. Same rule as teacher_set_section_visual: being senior
     // does not make a colleague's lesson yours to redecorate.
-    const { data: doc, error: docError } = await db
+    const { data: doc, error } = await supabaseAdmin()
       .from("corpus_documents")
       .select("id")
-      .eq("id", documentId)
+      .eq("id", body.documentId)
       .eq("uploaded_by", user.id)
       .maybeSingle();
-    if (docError) throw docError;
-    if (!doc) {
-      return NextResponse.json({ error: "That isn't material you uploaded." }, { status: 404 });
-    }
+    if (error) throw error;
+    if (!doc) return NextResponse.json({ error: "That isn't material you uploaded." }, { status: 404 });
 
-    const [chunks, media] = await Promise.all([
-      contentRepo.getCorpusForTopic(documentId),
-      contentRepo.getMediaForTopic(documentId),
-    ]);
-    if (chunks.length === 0) {
-      return NextResponse.json({ error: "That material has no sections yet." }, { status: 400 });
-    }
-
-    const [{ data: overrideRows, error: overrideError }, { data: existing, error: existingError }] = await Promise.all([
-      db.from("section_visuals").select("chunk_id, visual").in("chunk_id", chunks.map((c) => c.id)),
-      db.from("section_visual_suggestions").select("chunk_id").in("chunk_id", chunks.map((c) => c.id)),
-    ]);
-    if (overrideError) throw overrideError;
-    if (existingError) throw existingError;
-
-    // Recomputed here rather than taken from the client, so what the model is
-    // asked about is what the lesson actually renders. The two must agree or
-    // the teacher gets offered a picture for a section that already has one.
-    const matched = assignVisuals(
-      chunks.map((c) => {
-        const heading = c.heading?.trim() ?? "";
-        const figures = (media.get(pageOf(c.source)) ?? []).filter((m) => m.kind !== "slide");
-        return { heading, text: c.text.trim() === heading ? "" : c.text, hasMedia: figures.length > 0 };
-      }),
-    );
-    const resolved = dedupe(
-      resolveVisuals(
-        chunks.map((c) => c.id),
-        matched,
-        (overrideRows ?? []).map((r) => ({ chunkId: r.chunk_id as string, visual: (r.visual as string | null) ?? null })),
-        VISUAL_IDS,
-      ),
-    );
-
-    // Already asked about, whether or not the teacher said yes. A section they
-    // rejected must not be proposed again, and one they have not answered yet
-    // does not need a second opinion.
-    const asked = new Set((existing ?? []).map((r) => r.chunk_id as string));
-    const eligible = sectionsNeedingSuggestion(
-      chunks.map((c) => ({ chunkId: c.id, heading: c.heading?.trim() ?? "", text: c.text })),
-      resolved,
-    ).filter((s) => !asked.has(s.chunkId));
-
-    if (eligible.length === 0) {
-      return NextResponse.json({ ok: true, suggested: 0, proposed: 0, considered: 0 });
-    }
-
-    // Counted only now, because everything above can refuse for free and a
-    // teacher should not spend a call to be told there was nothing to do.
+    // Counted only against a person who asked for it. The automatic run at
+    // approval does not claim — see suggestVisualsForDocument.
     const claim = await claimAiCall("suggest");
     if (!claim.verdict.allowed) {
       return NextResponse.json(
@@ -119,29 +65,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { suggestions, proposed, model } = await proposeVisuals(
-      eligible,
-      VISUALS,
-      resolved.map((r) => r.visual).filter((v): v is string => v !== null),
-    );
-
-    if (suggestions.length > 0) {
-      const { error: writeError } = await db.from("section_visual_suggestions").upsert(
-        suggestions.map((s) => ({ chunk_id: s.chunkId, visual: s.visual, reason: s.reason, model })),
-        { onConflict: "chunk_id" },
-      );
-      if (writeError) throw writeError;
-    }
-
+    const { considered, proposed, stored } = await suggestVisualsForDocument(body.documentId);
     // `proposed` is not decoration. Without it, suggested: 0 means either the
     // model had no opinion or it had four and the filter took all of them, and
     // those call for opposite fixes.
-    return NextResponse.json({
-      ok: true,
-      suggested: suggestions.length,
-      proposed,
-      considered: eligible.length,
-    });
+    return NextResponse.json({ ok: true, suggested: stored, proposed, considered });
   } catch (err) {
     await reportError("ingest", err, "could not suggest visuals for a document");
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });

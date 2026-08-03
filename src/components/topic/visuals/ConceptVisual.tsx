@@ -4,6 +4,8 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import LeverBalance from "./LeverBalance";
+import GradientGraph from "./GradientGraph";
+import DistanceTimeGraph from "@/components/physics/DistanceTimeGraph";
 
 // Interactive illustrations for uploaded material.
 //
@@ -43,6 +45,8 @@ export default function ConceptVisual({ kind }: { kind: VisualKind }) {
       {kind === "electromagnet" && <Electromagnet />}
       {kind === "distance" && <DistanceForce />}
       {kind === "lever" && <LeverBalance />}
+      {kind === "gradient" && <GradientGraph />}
+      {kind === "journey" && <DistanceTimeGraph />}
       {kind === "conductor" && <StraightConductor />}
       {kind === "grip" && <SolenoidGrip />}
       {kind === "field" && (
