@@ -14,9 +14,20 @@ import type { Resolved } from "./resolve";
 // offered, a second copy of something already on screen — because a suggestion
 // that survives those checks is one a teacher will be asked to approve.
 
-const KNOWN = ["lever", "field", "domains"] as const;
+// A catalogue, not a list of ids: a suggestion now has to be for a section
+// that is actually about the visual's subject, so the test data has to carry
+// the subject too.
+const KNOWN = [
+  { id: "lever" as const, requires: /(moment|pivot|balanc)/i },
+  { id: "field" as const, requires: /(magnet|pole|field)/i },
+  { id: "domains" as const, requires: /(magnet|domain)/i },
+];
 
-const section = (chunkId: string, heading = "A section", text = "Some words."): SectionForSuggestion => ({
+const section = (
+  chunkId: string,
+  heading = "A section",
+  text = "The moment of a force about a pivot.",
+): SectionForSuggestion => ({
   chunkId,
   heading,
   text,
@@ -112,6 +123,61 @@ describe("keepValidSuggestions", () => {
 
   it("returns nothing for an empty answer, which is a good answer", () => {
     expect(keepValidSuggestions([], eligible, KNOWN)).toEqual([]);
+  });
+});
+
+describe("the subject gate, on the real sections that made it necessary", () => {
+  // Verbatim from the school's decks. Both of these were proposed by the model
+  // in production; one is right and one would have drawn two bar magnets in a
+  // lesson about a train.
+  const KINEMATICS = section(
+    "k1",
+    "Steady speed and reference points",
+    "Two passengers are sitting in a compartment of a moving train. Are they in motion with respect to each other? " +
+      "If a car covers a distance of 6m every second, is it in uniform or non-uniform motion? " +
+      "Do we need reference points to describe motion of an object.",
+  );
+  const MAGNETS = section(
+    "m1",
+    "Forces between magnets",
+    "Closer the poles, greater is the force. This is used to understand that magnets attract and repel other magnets.",
+  );
+  const CATALOGUE = [{ id: "distance" as const, requires: /(magnet|pole)/i }];
+
+  it("refuses a magnetism visual for a section with no magnet in it", () => {
+    // The model proposed exactly this, twice, with two different
+    // justifications — the second of which never mentioned force at all:
+    // "This section says a car covering 6 m every second is in uniform motion."
+    // True about the section, and no reason to draw two bar magnets beside it.
+    const out = keepValidSuggestions(
+      [{ chunkId: "k1", visual: "distance", reason: "This section says a car covers 6 m every second." }],
+      [KINEMATICS],
+      CATALOGUE,
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("still allows the suggestion that was right", () => {
+    // The gate has to be a floor, not a second matcher. If it also blocks this
+    // one, the feature has no purpose left.
+    const out = keepValidSuggestions(
+      [{ chunkId: "m1", visual: "distance", reason: "This section states that closer poles produce a greater force." }],
+      [MAGNETS],
+      CATALOGUE,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].visual).toBe("distance");
+  });
+
+  it("refuses a beam for a section about steady speed", () => {
+    // The other production failure: a see-saw for a car at constant speed,
+    // justified as "equal changes over equal intervals".
+    const out = keepValidSuggestions(
+      [{ chunkId: "k1", visual: "lever", reason: "A steady rate is equal changes over equal intervals." }],
+      [KINEMATICS],
+      [{ id: "lever" as const, requires: /(moment|lever|see-?saw|pivot|turning|balanc|torque)/i }],
+    );
+    expect(out).toEqual([]);
   });
 });
 

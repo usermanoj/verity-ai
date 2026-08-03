@@ -31,15 +31,83 @@ export type VisualKind =
  * removing a visual here is enough — no migration, and an id that no longer
  * ships degrades to no picture rather than a broken lesson.
  */
-export const VISUALS: { id: VisualKind; label: string; blurb: string }[] = [
-  { id: "lever", label: "Balance a beam", blurb: "Load each side and watch the moments" },
-  { id: "field", label: "Field around a bar magnet", blurb: "Turn it in three dimensions" },
-  { id: "domains", label: "Magnetic domains", blurb: "Align them and watch magnetism appear" },
-  { id: "broken", label: "Breaking a magnet", blurb: "Every piece keeps two poles" },
-  { id: "electromagnet", label: "Electromagnet on and off", blurb: "Switch the current, drop the load" },
-  { id: "conductor", label: "Field around a straight wire", blurb: "Concentric circles, not loops" },
-  { id: "grip", label: "Right-hand grip rule", blurb: "Find the north end of a solenoid" },
-  { id: "distance", label: "Force against distance", blurb: "Closer means stronger" },
+/**
+ * A visual, with the subject its section has to be about.
+ *
+ * `requires` is the honesty rule as code rather than as an instruction. Twice
+ * now a model has been told, in plain words, that these interactives are about
+ * magnetism and turning forces — and twice it has proposed one for a section
+ * about a car travelling at a steady speed. Once with an argument ("the beam
+ * can model equal changes over equal intervals") and once by simply changing
+ * the subject in its reason. An instruction it can talk itself out of is not a
+ * rule; a regex it never sees is.
+ *
+ * Deliberately much weaker than the matching RULES below. Those need a pattern
+ * in the HEADING and another in the TEXT, which is what makes matching
+ * conservative enough to leave most sections bare. This asks only that the
+ * subject appears somewhere — it is a floor under the model's judgement, not a
+ * second matcher, and it must not undo the coverage the model exists to add.
+ *
+ * The test to apply when adding a visual: what would a student conclude if
+ * this were drawn beside a section that never mentions the subject? For
+ * `distance` — which renders two bar magnets — the answer on a kinematics
+ * section is "magnets have something to do with trains", and that is the
+ * failure this prevents.
+ */
+export type VisualEntry = { id: VisualKind; label: string; blurb: string; requires: RegExp };
+
+export const VISUALS: VisualEntry[] = [
+  {
+    id: "lever",
+    label: "Balance a beam",
+    blurb: "Load each side and watch the moments",
+    requires: /(moment|lever|see-?saw|pivot|turning|balanc|torque)/i,
+  },
+  {
+    id: "field",
+    label: "Field around a bar magnet",
+    blurb: "Turn it in three dimensions",
+    requires: /(magnet|pole|field)/i,
+  },
+  {
+    id: "domains",
+    label: "Magnetic domains",
+    blurb: "Align them and watch magnetism appear",
+    requires: /(magnet|domain)/i,
+  },
+  {
+    id: "broken",
+    label: "Breaking a magnet",
+    blurb: "Every piece keeps two poles",
+    requires: /(magnet|pole)/i,
+  },
+  {
+    id: "electromagnet",
+    label: "Electromagnet on and off",
+    blurb: "Switch the current, drop the load",
+    requires: /(electromagnet|solenoid|coil|current)/i,
+  },
+  {
+    id: "conductor",
+    label: "Field around a straight wire",
+    blurb: "Concentric circles, not loops",
+    requires: /(wire|conductor|current)/i,
+  },
+  {
+    id: "grip",
+    label: "Right-hand grip rule",
+    blurb: "Find the north end of a solenoid",
+    requires: /(solenoid|coil|current|grip)/i,
+  },
+  {
+    // Two bar magnets and the field between them, so a section with no magnet
+    // in it can never have this. That is the exact false positive that made
+    // `requires` exist.
+    id: "distance",
+    label: "Force against distance",
+    blurb: "Closer means stronger",
+    requires: /(magnet|pole)/i,
+  },
 ];
 
 export const VISUAL_IDS: readonly VisualKind[] = VISUALS.map((v) => v.id);
