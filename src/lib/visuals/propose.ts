@@ -1,6 +1,7 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { aiModel, gatewayFailover, STRUCTURED_FALLBACK_MODELS, withRateLimitRetry } from "@/lib/ai";
+import type { VisualEntry } from "./catalogue";
 import {
   SUGGEST_SYSTEM_PROMPT,
   catalogueForPrompt,
@@ -51,7 +52,7 @@ export type ProposeResult = {
  */
 export async function proposeVisuals(
   sections: SectionForSuggestion[],
-  catalogue: { id: string; label: string; blurb: string }[],
+  catalogue: VisualEntry[],
   alreadyShowing: readonly string[] = [],
 ): Promise<ProposeResult> {
   const model = aiModel("question");
@@ -83,7 +84,7 @@ export async function proposeVisuals(
   return {
     // Untrusted from here backwards: an invented id, a section that was never
     // offered, the same visual twice — all dropped rather than repaired.
-    suggestions: keepValidSuggestions(raw, sections, catalogue.map((v) => v.id), alreadyShowing),
+    suggestions: keepValidSuggestions(raw, sections, catalogue, alreadyShowing),
     proposed: raw.length,
     model: modelId,
   };

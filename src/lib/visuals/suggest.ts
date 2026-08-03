@@ -17,6 +17,7 @@
 // turns it into something that can be shown to a teacher.
 
 import type { Resolved } from "./resolve";
+import type { VisualEntry } from "./catalogue";
 
 /** A section the model is allowed to propose something for. */
 export type SectionForSuggestion = { chunkId: string; heading: string; text: string };
@@ -48,13 +49,21 @@ export function sectionsNeedingSuggestion(
 /**
  * Turns the model's answer into suggestions worth showing, or into nothing.
  *
- * Five things are dropped, in this order:
+ * Six things are dropped, in this order:
  *
  *   · a visual this codebase does not ship — the model inventing an id
  *   · a section that was not on the list — including one already illustrated
+ *   · a section that is not about the visual's subject at all
  *   · a visual already on screen elsewhere in this lesson
  *   · a second suggestion for a section already suggested for
  *   · a suggestion with no reason
+ *
+ * The subject check is the one that is not about malformed output. The model
+ * has twice been told in plain words that these interactives are about
+ * magnetism and turning forces, and twice proposed one for a section about a
+ * car at a steady speed — once with an argument, once by quietly changing the
+ * subject in its reason. An instruction it can talk itself out of is not a
+ * rule. See VisualEntry.requires.
  *
  * The last is not tidiness. The teacher is being asked to approve something,
  * and "this section is about balancing a beam" is the entire basis on which
@@ -68,10 +77,10 @@ export function sectionsNeedingSuggestion(
 export function keepValidSuggestions(
   raw: RawSuggestion[],
   eligible: SectionForSuggestion[],
-  known: readonly string[],
+  catalogue: readonly Pick<VisualEntry, "id" | "requires">[],
   alreadyShowing: readonly string[] = [],
 ): Suggestion[] {
-  const ids = new Set(eligible.map((s) => s.chunkId));
+  const sections = new Map(eligible.map((s) => [s.chunkId, s]));
   const taken = new Set<string>(alreadyShowing);
   const suggested = new Set<string>();
   const out: Suggestion[] = [];
@@ -81,8 +90,15 @@ export function keepValidSuggestions(
     const visual = typeof item.visual === "string" ? item.visual : "";
     const reason = typeof item.reason === "string" ? item.reason.trim() : "";
 
-    if (!known.includes(visual)) continue;
-    if (!ids.has(chunkId)) continue;
+    const entry = catalogue.find((v) => v.id === visual);
+    if (!entry) continue;
+
+    const section = sections.get(chunkId);
+    if (!section) continue;
+
+    // Heading and text together, the same pair the matcher reads.
+    if (!entry.requires.test(`${section.heading} ${section.text}`)) continue;
+
     if (taken.has(visual)) continue;
     if (suggested.has(chunkId)) continue;
     if (!reason) continue;
