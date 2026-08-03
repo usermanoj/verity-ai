@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { describeSpan, helpEffect, pacing, toSessions, type TimelineEvent } from "@/lib/timeline";
+import type { TopicScore, Week } from "@/lib/student-breakdown";
+import StrengthsPanel from "./StrengthsPanel";
 
 // One student, in detail — the level the product has never had.
 //
@@ -26,7 +28,14 @@ export type TranscriptTurn = {
   topic: string | null;
 };
 
-type Detail = { allowed: boolean; wrong: WrongAnswer[]; transcript: TranscriptTurn[]; events: TimelineEvent[] };
+type Detail = {
+  allowed: boolean;
+  wrong: WrongAnswer[];
+  transcript: TranscriptTurn[];
+  events: TimelineEvent[];
+  topics: TopicScore[];
+  weekly: Week[];
+};
 
 export default function StudentDetail({
   studentId,
@@ -74,7 +83,7 @@ export default function StudentDetail({
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold tracking-tight">{name}</h2>
-            <p className="text-xs text-[var(--muted)]">What they got wrong, and what they asked.</p>
+            <p className="text-xs text-[var(--muted)]">What they can do, what they can&apos;t, and what they asked.</p>
           </div>
           <button
             onClick={onClose}
@@ -95,6 +104,7 @@ export default function StudentDetail({
 
         {detail?.allowed && (
           <div className="space-y-6">
+            <StrengthsPanel topics={detail.topics ?? []} weekly={detail.weekly ?? []} />
             <HowTheyWorked events={detail.events ?? []} />
             <section>
               <h3 className="mb-2 text-sm font-medium uppercase tracking-widest text-[var(--muted)]">
