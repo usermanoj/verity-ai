@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assignVisuals, visualFor } from "@/lib/visuals/catalogue";
+import { applicationScore, assignVisuals, visualFor } from "@/lib/visuals/catalogue";
 
 // A visual is a claim. Matching the wrong one to a section teaches something
 // the teacher never approved, so these tests pin both directions: the
@@ -220,5 +220,82 @@ describe("the two families do not poach each other", () => {
   it("does not put a see-saw on a section about steady speed", () => {
     // The failure the model made twice, checked against the matcher too.
     expect(visualFor("Steady speed of 10m/s", "Steady speed of 10m/s means, that the car travels a distance of 10m every second.")).not.toBe("lever");
+  });
+});
+
+describe("where a concept's interactive lands", () => {
+  // Matching used to take the FIRST section that mentioned a concept. On the
+  // school's motion deck that put the gradient widget on a one-line definition,
+  // three screens above the worked example it answers — and the worked example
+  // was skipped for carrying a picture of the graph, which is the exercise.
+  const MOTION = [
+    {
+      heading: "Gradient and speed",
+      text: "Slope or gradient of the distance time graph gives you speed.",
+      hasMedia: false,
+    },
+    {
+      heading: "Worked example: gradient equals speed",
+      text: "Calculate the slope or gradient of this distance time graph between the points A and B. Slope = y2-y1 / x2-x1 = (150 -50)m / (3-1)s = 100/2 = 50 m/s",
+      hasMedia: true,
+    },
+  ];
+
+  it("gives it to the section that asks a student to use it", () => {
+    expect(assignVisuals(MOTION)).toEqual([null, "gradient"]);
+  });
+
+  it("is not outranked by the teacher's own diagram", () => {
+    // The picture on the worked example is the graph the student is asked
+    // about. Being able to drag its points is the best pairing in the deck,
+    // and the old rule read it as the worst.
+    expect(assignVisuals(MOTION)[1]).toBe("gradient");
+    expect(applicationScore(MOTION[1].heading, MOTION[1].text)).toBeGreaterThan(
+      applicationScore(MOTION[0].heading, MOTION[0].text),
+    );
+  });
+
+  it("still prefers a section with no diagram when neither sets work", () => {
+    // The original rule, intact where it was doing its real job.
+    const out = assignVisuals([
+      { heading: "Gradient and speed", text: "The slope gives you speed.", hasMedia: true },
+      { heading: "Slope of a graph", text: "The gradient of a distance time graph.", hasMedia: false },
+    ]);
+    expect(out).toEqual([null, "gradient"]);
+  });
+
+  it("leaves a deck that sets no work exactly where it was", () => {
+    // Every section of the magnetism deck scores zero, so this must place them
+    // in reading order as it always did. Verified against the real deck: all
+    // six placements are unchanged.
+    const magnets = [
+      { heading: "Magnetic field around a bar magnet", text: "The field fills the region around the poles of a bar magnet.", hasMedia: false },
+      { heading: "More about the magnetic field", text: "The field around a bar magnet has a north pole and a south pole region.", hasMedia: false },
+    ];
+    expect(assignVisuals(magnets)).toEqual(["field", null]);
+  });
+});
+
+describe("applicationScore", () => {
+  it("rates a worked example above a definition", () => {
+    expect(applicationScore("Worked example", "Calculate the slope = (150-50)/(3-1) = 50")).toBeGreaterThan(
+      applicationScore("Gradient and speed", "The gradient gives you the speed."),
+    );
+  });
+
+  it("counts a task heading, an instruction and a calculation separately", () => {
+    // Named separately so a wrong placement can be argued about by pointing at
+    // one line rather than at a single opaque number.
+    expect(applicationScore("Task: check for understanding", "")).toBe(2);
+    expect(applicationScore("", "Sketch a distance-time graph.")).toBe(2);
+    expect(applicationScore("", "Slope = 100 / 2 = 50")).toBe(1);
+  });
+
+  it("does not mistake a lone number in prose for a calculation", () => {
+    expect(applicationScore("", "A magnet has 2 poles.")).toBe(0);
+  });
+
+  it("says nothing about a section that only describes", () => {
+    expect(applicationScore("Domains in magnetic materials", "Domains line up when magnetised.")).toBe(0);
   });
 });
