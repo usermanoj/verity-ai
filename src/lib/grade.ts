@@ -61,6 +61,18 @@ export type GradeResult = {
   // the answer cannot learn from the attempt. Kept separate from `feedback`
   // so the UI can present it consistently instead of burying it in prose.
   correctAnswer?: string;
+  // What the STUDENT chose, in words, for a wrong attempt.
+  //
+  // The stored answer is their raw submission, and for a multiple choice that
+  // is a letter — "B" — while correctAnswer is the option's text. A teacher
+  // reading "answered B, the answer is At the poles" is reading half a
+  // sentence: B is a position in a list they cannot see.
+  //
+  // The raw answer stays exactly as submitted, because it is evidence about a
+  // child and must not be rewritten. This is the readable form beside it, and
+  // it is set only where the two differ — a typed answer is already its own
+  // words and needs no translation.
+  chosenAnswer?: string;
   details: {
     valueOk?: boolean;
     unitOk?: boolean;
@@ -153,6 +165,10 @@ export function gradeMcq(q: McqQuestion, answer: string): GradeResult {
     score: correct ? 1 : 0,
     feedback: correct ? "Correct!" : "Not quite — review the material and try again.",
     correctAnswer: correct ? undefined : (answerText ?? expected),
+    // `chosen` is already resolved above to compare against. Recording it costs
+    // nothing and is the difference between "answered B" and "answered At the
+    // centre" on a teacher's screen.
+    chosenAnswer: correct ? undefined : chosen,
     details: {},
   };
 }
@@ -235,6 +251,12 @@ export function gradeMatching(q: MatchingQuestion, answer: string): GradeResult 
   // answers recorded before the change gradeable.
   const byRow = new Array<string | undefined>(q.pairs.length);
   const byLeft = new Map<string, string>();
+  // The same pairing untouched. Everything above is normalised for comparison
+  // — lowercased, punctuation stripped — which turns "2.4 Nm" into "24 nm".
+  // Fine for deciding whether two answers match, wrong for showing a teacher
+  // what a child wrote, so the original is kept alongside.
+  const rawByRow = new Array<string | undefined>(q.pairs.length);
+  const rawByLeft = new Map<string, string>();
 
   for (const line of (answer || "").split("\n")) {
     const at = line.indexOf("=");
@@ -243,9 +265,15 @@ export function gradeMatching(q: MatchingQuestion, answer: string): GradeResult 
     const right = normaliseText(line.slice(at + 1));
     if (!right) continue;
 
+    const raw = line.slice(at + 1).trim();
     const index = Number(key);
-    if (Number.isInteger(index) && index >= 0 && index < q.pairs.length) byRow[index] = right;
-    else byLeft.set(normaliseText(key), right);
+    if (Number.isInteger(index) && index >= 0 && index < q.pairs.length) {
+      byRow[index] = right;
+      rawByRow[index] = raw;
+    } else {
+      byLeft.set(normaliseText(key), right);
+      rawByLeft.set(normaliseText(key), raw);
+    }
   }
 
   const rightCount = q.pairs.filter(
@@ -261,6 +289,18 @@ export function gradeMatching(q: MatchingQuestion, answer: string): GradeResult 
       ? "All matched correctly!"
       : `${rightCount} of ${q.pairs.length} matched.`,
     correctAnswer: correct ? undefined : q.pairs.map((p) => `${p.left} → ${p.right}`).join("; "),
+    // The same arrow form as correctAnswer, so the two can be read against
+    // each other. Stored keyed by row index — "0=8 Nm" says nothing about
+    // which term row 0 was — and a teacher should not have to reconstruct the
+    // question to find out what the child paired.
+    chosenAnswer: correct
+      ? undefined
+      : q.pairs
+          .map((p, i) => {
+            const given = rawByRow[i] ?? rawByLeft.get(normaliseText(p.left));
+            return `${p.left} → ${given ?? "—"}`;
+          })
+          .join("; "),
     details: {},
   };
 }

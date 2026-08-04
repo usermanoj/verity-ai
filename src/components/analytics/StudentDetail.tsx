@@ -21,6 +21,8 @@ export type WrongAnswer = {
   prompt: string | null;
   level: string | null;
   answer: string;
+  /** The same choice in words, where the grader could resolve one. */
+  chosenAnswer: string | null;
   /** What the grader recorded as right, where the question kind has one. */
   correctAnswer: string | null;
   at: string;
@@ -313,6 +315,7 @@ function Stuck({ wrong }: { wrong: WrongAnswer[] }) {
       questionId: w.questionId ?? null,
       prompt: w.prompt,
       answer: w.answer,
+      chosenAnswer: w.chosenAnswer ?? null,
       correctAnswer: w.correctAnswer ?? null,
       at: w.at,
     })),
