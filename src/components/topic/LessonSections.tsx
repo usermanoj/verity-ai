@@ -10,6 +10,7 @@ import { ComparisonCard, FormulaCard, RelationshipCard } from "./StructuredViews
 import { detectComparison, detectFormula, detectRelationship, type Comparison, type Formula, type Relationship } from "./structure";
 import type { CorpusChunk } from "@/data/corpus";
 import TableChart from "@/components/lesson/TableChart";
+import FormulaPlayground from "@/components/lesson/FormulaPlayground";
 import VisualPicker from "@/components/teacher/VisualPicker";
 import { dedupe, resolveVisuals, type Resolved, type VisualOverride } from "@/lib/visuals/resolve";
 import { pageOf } from "@/lib/lesson/page-of";
@@ -309,6 +310,13 @@ function Section({
           <DataTable table={t} />
         </div>
       ))}
+
+      {/* The section's own rule, made adjustable. Rendered from the text
+          rather than matched to a concept, so it needs no entry in the
+          catalogue and knows nothing about the subject — a chemistry deck
+          gets it on the same terms as this physics one. Renders nothing when
+          the section states no formula, which is most of them. */}
+      <FormulaPlayground text={body} />
 
       {visual.visual && <ConceptVisual kind={visual.visual as VisualKind} />}
 
