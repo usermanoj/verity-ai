@@ -218,3 +218,14 @@ export function shortLabel(operand: string, max = 22): string {
   const lastSpace = cut.lastIndexOf(" ");
   return `${(lastSpace > 8 ? cut.slice(0, lastSpace) : cut).trim()}…`;
 }
+
+/**
+ * The quantity's name mid-sentence.
+ *
+ * "Moment" becomes "moment", but "M" stays "M" — lowercasing a symbol gives
+ * "watch m follow", which reads as a typo and is one. A name is only lowered
+ * when it looks like a word: a capital followed by lower case.
+ */
+export function inSentence(result: string): string {
+  return /^[A-Z][a-z]/.test(result) ? result.charAt(0).toLowerCase() + result.slice(1) : result;
+}
