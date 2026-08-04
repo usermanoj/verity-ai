@@ -200,6 +200,65 @@ describe("prompt building", () => {
 
   it("offers the model the same ids the picker accepts", () => {
     const text = catalogueForPrompt([{ id: "lever", label: "Balance a beam", blurb: "Load each side" }]);
-    expect(text).toContain("lever — Balance a beam: Load each side");
+    expect(text).toContain('"lever" — Balance a beam: Load each side');
+  });
+
+  it("says which part of the entry to send back", () => {
+    // Narrowed to what is free, this list is often one item long — and the
+    // model answered with the whole line as though that were the name.
+    const text = catalogueForPrompt([{ id: "lever", label: "Balance a beam", blurb: "Load each side" }]);
+    expect(text).toContain("Answer with the id only");
+    expect(text).toContain('for example "lever"');
+  });
+});
+
+describe("an id inside its catalogue line", () => {
+  const CATALOGUE = [{ id: "distance" as const, requires: /(magnet|pole)/i }];
+  const SECTION = {
+    chunkId: "c1",
+    heading: "Forces between magnets",
+    text: "Closer the poles, greater is the force.",
+  };
+
+  it("accepts the whole entry and stores the id", () => {
+    // Verbatim from a real run: with one interactive free, the model returned
+    // the entry rather than its name.
+    const out = keepValidSuggestions(
+      [
+        {
+          chunkId: "c1",
+          visual: "distance — Force against distance: Closer means stronger",
+          reason: "This section says the force is greater when the poles are closer.",
+        },
+      ],
+      [SECTION],
+      CATALOGUE,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].visual).toBe("distance");
+  });
+
+  it("still drops something invented", () => {
+    // The leading token has to be an id exactly. Half-matching an invention
+    // into a real interactive would be worse than dropping it.
+    const out = keepValidSuggestions(
+      [{ chunkId: "c1", visual: "magnetism — A thing that does not exist", reason: "because" }],
+      [SECTION],
+      CATALOGUE,
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("does not let the long form smuggle in a second copy", () => {
+    const out = keepValidSuggestions(
+      [
+        { chunkId: "c1", visual: "distance", reason: "first" },
+        { chunkId: "c1", visual: "distance — Force against distance", reason: "second" },
+      ],
+      [SECTION],
+      CATALOGUE,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].reason).toBe("first");
   });
 });
