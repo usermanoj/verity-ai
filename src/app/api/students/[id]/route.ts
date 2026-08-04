@@ -27,10 +27,11 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     const supabase = await supabaseServer();
     // Both in one round trip. The panel opens on a click and a second
     // sequential request would be visible as a stutter.
-    const [detail, timeline, breakdown] = await Promise.all([
+    const [detail, timeline, breakdown, reading] = await Promise.all([
       supabase.rpc("teacher_student_detail", { p_student_id: id }),
       supabase.rpc("teacher_student_timeline", { p_student_id: id }),
       supabase.rpc("teacher_student_breakdown", { p_student_id: id }),
+      supabase.rpc("teacher_student_reading", { p_student_id: id }),
     ]);
     if (detail.error) {
       await reportError("analytics", detail.error, "student detail lookup failed");
@@ -43,6 +44,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     // Same reasoning for the breakdown: strengths are new and welcome, and
     // losing them must not cost a teacher the transcript they came for.
     if (breakdown.error) await reportError("analytics", breakdown.error, "student breakdown lookup failed");
+    if (reading.error) await reportError("analytics", reading.error, "student reading lookup failed");
 
     const events = timeline.error ? [] : ((timeline.data as { events?: unknown[] } | null)?.events ?? []);
     const parts = breakdown.error ? null : (breakdown.data as { topics?: unknown[]; weekly?: unknown[] } | null);
@@ -51,6 +53,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       events,
       topics: parts?.topics ?? [],
       weekly: parts?.weekly ?? [],
+      reading: reading.error ? [] : ((reading.data as { rows?: unknown[] } | null)?.rows ?? []),
     });
   } catch (err) {
     console.error("[api/students] threw:", err);

@@ -7,6 +7,7 @@ import {
   type TopicScore,
   type Week,
 } from "@/lib/student-breakdown";
+import { describeEngagement, engagement, mergeReading, type ReadingRow } from "@/lib/reading";
 
 // What this child is good at, what they are not, and whether it is moving.
 //
@@ -20,10 +21,19 @@ import {
 // learns that the subject is a list of their failures, and the one thing this
 // screen can do about that is give their teacher something true to say.
 
-export default function StrengthsPanel({ topics, weekly }: { topics: TopicScore[]; weekly: Week[] }) {
+export default function StrengthsPanel({
+  topics,
+  weekly,
+  reading = [],
+}: {
+  topics: TopicScore[];
+  weekly: Week[];
+  reading?: ReadingRow[];
+}) {
   const ranked = rank(topics);
   const movement = trend(weekly);
-  const nothingYet = topics.length === 0;
+  const read = mergeReading(reading);
+  const nothingYet = topics.length === 0 && read.length === 0;
 
   return (
     <section>
@@ -33,11 +43,12 @@ export default function StrengthsPanel({ topics, weekly }: { topics: TopicScore[
 
       {nothingYet ? (
         <p className="text-sm text-[var(--muted)]">
-          Nothing to break down yet — they haven&apos;t answered anything.
+          Nothing to break down yet — they haven&apos;t opened a lesson or answered anything.
         </p>
       ) : (
         <div className="space-y-3">
           <Movement movement={movement} />
+          <Reading read={read} topics={topics} />
 
           <Group
             title="Strong"
@@ -141,6 +152,50 @@ function Group({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * What they read, beside what they answered.
+ *
+ * The pair is the finding. "Read the whole lesson and answered nothing" and
+ * "answered everything without opening the lesson" are both worth a teacher's
+ * attention, and neither is visible from either number alone.
+ *
+ * Sections reached — never how long they spent. See lib/reading.ts.
+ */
+function Reading({ read, topics }: { read: ReturnType<typeof mergeReading>; topics: TopicScore[] }) {
+  if (read.length === 0) {
+    return (
+      <p className="text-xs text-[var(--muted)]">
+        No reading recorded yet — this starts from the next lesson they open.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-1 text-xs font-medium text-[var(--muted)]">Read</div>
+      <ul className="space-y-1">
+        {read.map((r) => {
+          const attempts = topics.find((t) => t.topicId === r.topicId)?.attempts ?? 0;
+          const state = engagement(r, attempts);
+          return (
+            <li key={r.topicId} className="rounded-xl border border-[var(--border)] px-3 py-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate text-sm">
+                  {topics.find((t) => t.topicId === r.topicId)?.title ?? "A lesson"}
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-[var(--muted)]">
+                  {r.reached}/{r.total} sections
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-[var(--muted)]">{describeEngagement(state, r)}</p>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

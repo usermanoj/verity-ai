@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { describeSpan, helpEffect, pacing, toSessions, type TimelineEvent } from "@/lib/timeline";
 import type { TopicScore, Week } from "@/lib/student-breakdown";
+import type { ReadingRow } from "@/lib/reading";
 import StrengthsPanel from "./StrengthsPanel";
 
 // One student, in detail — the level the product has never had.
@@ -35,6 +36,7 @@ type Detail = {
   events: TimelineEvent[];
   topics: TopicScore[];
   weekly: Week[];
+  reading: ReadingRow[];
 };
 
 export default function StudentDetail({
@@ -104,7 +106,7 @@ export default function StudentDetail({
 
         {detail?.allowed && (
           <div className="space-y-6">
-            <StrengthsPanel topics={detail.topics ?? []} weekly={detail.weekly ?? []} />
+            <StrengthsPanel topics={detail.topics ?? []} weekly={detail.weekly ?? []} reading={detail.reading ?? []} />
             <HowTheyWorked events={detail.events ?? []} />
             <section>
               <h3 className="mb-2 text-sm font-medium uppercase tracking-widest text-[var(--muted)]">

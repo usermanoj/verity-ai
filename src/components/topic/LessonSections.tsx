@@ -175,6 +175,10 @@ function Section({
   return (
     <motion.section
       id={`section-${index + 1}`}
+      // Read by ReadingTracker to record that a section came into view. The
+      // index rather than the heading: a lesson's structure is not something to
+      // repeat into an events table keyed to a child.
+      data-section-index={index}
       initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
