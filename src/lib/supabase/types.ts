@@ -675,6 +675,12 @@ export type Database = {
         Args: { p_student_id: string };
         Returns: unknown;
       };
+      // How far through each lesson a pupil read (0048). Raw reports; the
+      // folding and the judgement live in lib/reading.ts.
+      teacher_student_reading: {
+        Args: { p_student_id: string };
+        Returns: unknown;
+      };
       teacher_student_timeline: {
         Args: { p_student_id: string };
         Returns: unknown;

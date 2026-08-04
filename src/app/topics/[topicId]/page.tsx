@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import AiTutorPanel from "@/components/tutor/AiTutorPanel";
 import LessonSections from "@/components/topic/LessonSections";
 import SuggestVisualsButton from "@/components/teacher/SuggestVisualsButton";
+import ReadingTracker from "@/components/lesson/ReadingTracker";
 import LessonNav from "@/components/topic/LessonNav";
 import HashTarget from "@/components/topic/HashTarget";
 import PracticeZone from "@/components/practice/PracticeZone";
@@ -152,6 +153,11 @@ export default async function UploadedTopicPage({ params }: { params: Promise<{ 
           )}
         </div>
       </section>
+
+      {/* Students only: a teacher previewing their own deck is not a pupil
+          doing homework, and the other two logging paths already draw that
+          line. Records that a section came into view — never how long for. */}
+      {user?.role === "student" && <ReadingTracker topicId={topicId} total={chunks.length} />}
 
       {headings.length > 1 && <LessonNav headings={headings} />}
 
