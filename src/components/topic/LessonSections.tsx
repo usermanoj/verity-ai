@@ -11,6 +11,7 @@ import { detectComparison, detectFormula, detectRelationship, type Comparison, t
 import type { CorpusChunk } from "@/data/corpus";
 import TableChart from "@/components/lesson/TableChart";
 import FormulaPlayground from "@/components/lesson/FormulaPlayground";
+import RelationshipPlay from "@/components/lesson/RelationshipPlay";
 import VisualPicker from "@/components/teacher/VisualPicker";
 import { dedupe, resolveVisuals, type Resolved, type VisualOverride } from "@/lib/visuals/resolve";
 import { pageOf } from "@/lib/lesson/page-of";
@@ -317,6 +318,11 @@ function Section({
           gets it on the same terms as this physics one. Renders nothing when
           the section states no formula, which is most of them. */}
       <FormulaPlayground text={body} />
+
+      {/* And the proportionalities it states in words rather than in symbols,
+          which a syllabus does far more often. Same terms: read from the
+          text, no subject knowledge, nothing when there is nothing. */}
+      <RelationshipPlay text={body} />
 
       {visual.visual && <ConceptVisual kind={visual.visual as VisualKind} />}
 

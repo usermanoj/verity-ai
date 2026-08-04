@@ -1,3 +1,4 @@
+import { COMPARATIVE_WORDS } from "@/lib/visuals/relationship";
 // Recognises the shapes a physics lesson keeps writing in, so they can be
 // laid out instead of run together as paragraphs.
 //
@@ -17,7 +18,23 @@ export type Comparison = {
   right: { title: string; points: string[] };
 };
 
-export type Relationship = { lead: string; cause: string; effect: string; sentence: string };
+export type Relationship = {
+  lead: string;
+  /** "Closer the poles" — the comparative and its subject, as written. */
+  cause: string;
+  effect: string;
+  sentence: string;
+  /**
+   * The same two halves taken apart.
+   *
+   * The joined forms above read well in a card and cannot be reasoned about:
+   * an interactive needs to know that "closer" points DOWN and "greater"
+   * points UP before it can move anything. Split here rather than re-parsed
+   * downstream, so there is one pattern for this sentence shape and not two
+   * that can disagree — the mistake this codebase has made three times.
+   */
+  parts: { causeWord: string; causeThing: string; effectWord: string; effectThing: string };
+};
 
 export type Formula = { lead: string; result: string; expression: string; rest: string };
 
@@ -145,7 +162,10 @@ function fromLines(text: string): Comparison | null {
 // A comparative on each side of a comma is the sentence pattern a syllabus
 // uses for every proportionality, and it is exactly the relationship students
 // are asked to state back.
-const COMPARATIVE = "(greater|closer|further|farther|larger|bigger|smaller|stronger|weaker|higher|lower|more|less|faster|slower)";
+// Built from the one vocabulary in lib/visuals/relationship.ts, which also
+// knows which way each word points. Two lists of comparatives is how the
+// detector ends up finding a sentence the interactive cannot read.
+const COMPARATIVE = `(${COMPARATIVE_WORDS.join("|")})`;
 const RELATIONSHIP = new RegExp(
   `\\b${COMPARATIVE}\\b\\s+(?:the\\s+)?([^,.]{2,60}),\\s*(?:the\\s+)?\\b${COMPARATIVE}\\b\\s+(?:is\\s+|are\\s+)?(?:the\\s+)?([^.]{2,60})\\.`,
   "i",
@@ -161,6 +181,12 @@ export function detectRelationship(text: string): Relationship | null {
     cause: `${m[1]} ${m[2]}`.trim(),
     effect: `${m[3]} ${m[4]}`.trim(),
     sentence,
+    parts: {
+      causeWord: m[1].toLowerCase(),
+      causeThing: m[2].trim(),
+      effectWord: m[3].toLowerCase(),
+      effectThing: m[4].trim(),
+    },
   };
 }
 
