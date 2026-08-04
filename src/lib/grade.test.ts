@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { grade, gradeNumeric, gradeMcq, gradeTrueFalse, gradeFill, gradeMatching, parseNumber } from "./grade";
+import { grade, gradeNumeric, gradeMcq, gradeTrueFalse, gradeFill, gradeMatching, parseNumber } from "./grade";
+import type { McqQuestion, MatchingQuestion } from "./grade";
 
 describe("parseNumber", () => {
   it("extracts value from messy answers", () => {
@@ -210,3 +211,70 @@ describe("grade dispatch", () => {
     expect(grade({ kind: "matching", pairs: [{ left: "a", right: "b" }] }, "a=b").correct).toBe(true);
   });
 });
+
+// What the student chose, in words.
+//
+// The stored answer is their raw submission, which for a multiple choice is a
+// letter. A teacher reading "answered B, the answer is At the poles" is reading
+// half a sentence — B is a position in a list they cannot see. This is the real
+// case from the school's database.
+describe("chosenAnswer", () => {
+  const FILINGS: McqQuestion = {
+    kind: "mcq",
+    correct: "A",
+    options: ["At the poles", "At the centre", "Only outside the magnet", "It is the same everywhere"],
+  };
+
+  it("says which option a letter meant", () => {
+    expect(gradeMcq(FILINGS, "B").chosenAnswer).toBe("At the centre");
+  });
+
+  it("works however the choice was submitted", () => {
+    // A click sends a letter, a typed answer sends the text, an older client
+    // sent a position. All name the same option.
+    for (const given of ["B", "b)", "2", "At the centre"]) {
+      expect(gradeMcq(FILINGS, given).chosenAnswer).toBe("At the centre");
+    }
+  });
+
+  it("says nothing when they were right", () => {
+    // Nothing to explain, and a teacher's screen should not carry it.
+    expect(gradeMcq(FILINGS, "A").chosenAnswer).toBeUndefined();
+  });
+
+  it("does not rewrite the evidence", () => {
+    // The raw answer is what the child submitted and must survive untouched;
+    // chosenAnswer sits beside it, never in place of it.
+    const result = gradeMcq(FILINGS, "B");
+    expect(result.correctAnswer).toBe("At the poles");
+    expect(result.chosenAnswer).toBe("At the centre");
+  });
+
+  it("names the terms a matching answer was keyed by index", () => {
+    // Stored as "0=8 Nm", which says nothing about which term row 0 was.
+    const q: MatchingQuestion = {
+      kind: "matching",
+      pairs: [
+        { left: "2 m × 4 N", right: "8 Nm" },
+        { left: "0.4 m × 6 N", right: "2.4 Nm" },
+      ],
+    };
+    const out = gradeMcqOrMatching(q, "0=2.4 Nm\n1=8 Nm");
+    expect(out.chosenAnswer).toBe("2 m × 4 N → 2.4 Nm; 0.4 m × 6 N → 8 Nm");
+  });
+
+  it("marks a pair they left blank rather than dropping it", () => {
+    const q: MatchingQuestion = {
+      kind: "matching",
+      pairs: [
+        { left: "A", right: "1" },
+        { left: "B", right: "2" },
+      ],
+    };
+    expect(gradeMcqOrMatching(q, "0=9").chosenAnswer).toContain("B → —");
+  });
+});
+
+function gradeMcqOrMatching(q: MatchingQuestion, answer: string) {
+  return gradeMatching(q, answer);
+}

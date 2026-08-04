@@ -19,7 +19,16 @@
 export type WrongAttempt = {
   questionId: string | null;
   prompt: string | null;
+  /** Exactly what they submitted — a letter, for a multiple choice. */
   answer: string;
+  /**
+   * The same choice in words, where the grader could resolve one.
+   *
+   * "Answered B" is half a sentence: B is a position in a list the teacher
+   * cannot see. Null for a typed answer, which is already its own words, and
+   * for an attempt whose question is gone.
+   */
+  chosenAnswer?: string | null;
   correctAnswer: string | null;
   at: string;
 };
@@ -27,8 +36,10 @@ export type WrongAttempt = {
 export type Misconception = {
   questionId: string;
   prompt: string | null;
-  /** As they last wrote it, so a teacher sees what the child sees. */
+  /** The most readable form of what they chose, for a teacher to read. */
   answer: string;
+  /** What they actually submitted, kept whether or not it is what is shown. */
+  submitted: string;
   correctAnswer: string | null;
   /** Separate occasions, not raw rows — see REPEAT_GAP_MS. */
   occasions: number;
@@ -86,6 +97,9 @@ export function findMisconceptions(
     // this line wrote a literal NUL where a space was meant, which is how a
     // source file becomes binary to git. A pair encodes with no separator to
     // choose and no answer text that can collide with a key.
+    // Grouped on what they submitted, not on the readable form: the raw value
+    // is the thing that is actually identical between two attempts, and a
+    // resolved option could be absent on one of them.
     const key = JSON.stringify([w.questionId, normalise(w.answer)]);
     groups.set(key, [...(groups.get(key) ?? []), w]);
   }
@@ -113,7 +127,10 @@ export function findMisconceptions(
     out.push({
       questionId: last.questionId!,
       prompt: last.prompt,
-      answer: last.answer,
+      // Words if we have them, the raw submission otherwise. A teacher should
+      // never be shown "B" when "At the centre" was available.
+      answer: last.chosenAnswer?.trim() || last.answer,
+      submitted: last.answer,
       correctAnswer: last.correctAnswer,
       occasions,
       firstAt: sorted[0].at,

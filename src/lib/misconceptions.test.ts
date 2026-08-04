@@ -15,7 +15,9 @@ import {
 const attempt = (over: Partial<WrongAttempt> = {}): WrongAttempt => ({
   questionId: "q1",
   prompt: "When you dip a bar magnet in a heap of iron filings, where is the magnetic field strength concentrated?",
-  answer: "At the centre",
+  // Exactly what the real rows hold: the letter, plus the option in words.
+  answer: "B",
+  chosenAnswer: "At the centre",
   correctAnswer: "At the poles",
   at: "2026-08-01T10:00:00Z",
   ...over,
@@ -73,12 +75,12 @@ describe("findMisconceptions", () => {
   });
 
   it("treats capitals and stray spaces as the same answer", () => {
+    // A typed answer, with no option to resolve — so it is shown as written.
     const out = findMisconceptions([
-      attempt({ answer: "at the centre", at: minutesLater(0) }),
-      attempt({ answer: "  At The Centre ", at: minutesLater(5) }),
+      attempt({ answer: "at the centre", chosenAnswer: null, at: minutesLater(0) }),
+      attempt({ answer: "  At The Centre ", chosenAnswer: null, at: minutesLater(5) }),
     ]);
     expect(out[0].occasions).toBe(2);
-    // Shown as they last wrote it, so a teacher sees what the child sees.
     expect(out[0].answer).toBe("  At The Centre ");
   });
 
@@ -123,6 +125,7 @@ describe("describeMisconception", () => {
     questionId: "q1",
     prompt: "p",
     answer: "At the centre",
+    submitted: "B",
     correctAnswer: "At the poles",
     occasions: 4,
     firstAt: "a",
@@ -147,5 +150,41 @@ describe("describeMisconception", () => {
     const text = describeMisconception({ ...m, correctAnswer: null });
     expect(text).toContain("At the centre");
     expect(text).not.toContain("The answer is");
+  });
+});
+
+describe("the letter and the words", () => {
+  it("shows the option, not the position in a list", () => {
+    // The defect this fixes: "Answered B twice" is half a sentence, because B
+    // is a place in a list the teacher cannot see.
+    const out = findMisconceptions([attempt({ at: minutesLater(0) }), attempt({ at: minutesLater(5) })]);
+    expect(out[0].answer).toBe("At the centre");
+    expect(describeMisconception(out[0])).toContain("At the centre");
+    expect(describeMisconception(out[0])).not.toContain("“B”");
+  });
+
+  it("keeps what they submitted, whatever is displayed", () => {
+    // The raw answer is evidence about a child and must survive the rewrite.
+    const out = findMisconceptions([attempt({ at: minutesLater(0) }), attempt({ at: minutesLater(5) })]);
+    expect(out[0].submitted).toBe("B");
+  });
+
+  it("falls back to the submission when no option was resolved", () => {
+    // An older attempt, or a question since regenerated.
+    const out = findMisconceptions([
+      attempt({ chosenAnswer: null, at: minutesLater(0) }),
+      attempt({ chosenAnswer: null, at: minutesLater(5) }),
+    ]);
+    expect(out[0].answer).toBe("B");
+  });
+
+  it("groups on the submission, not on the words", () => {
+    // Two attempts where only one resolved must still count as a repeat.
+    const out = findMisconceptions([
+      attempt({ chosenAnswer: null, at: minutesLater(0) }),
+      attempt({ chosenAnswer: "At the centre", at: minutesLater(5) }),
+    ]);
+    expect(out[0].occasions).toBe(2);
+    expect(out[0].answer).toBe("At the centre");
   });
 });

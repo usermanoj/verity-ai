@@ -9,7 +9,9 @@ import { describeMisconception, findMisconceptions } from "@/lib/misconceptions"
 const REAL = [0, 5, 10, 15].map((m) => ({
   questionId: "q1",
   prompt: "When you dip a bar magnet in a heap of iron filings, where is the magnetic field strength concentrated?",
-  answer: "At the centre",
+  // What the row actually holds: the letter, and the option in words.
+  answer: "B",
+  chosenAnswer: "At the centre",
   correctAnswer: "At the poles",
   at: new Date(Date.UTC(2026, 7, 1, 10, m)).toISOString(),
 }));
@@ -20,6 +22,8 @@ describe("the stuck-answer finding", () => {
     const text = describeMisconception(m);
     expect(renderToStaticMarkup(<p>{text}</p>)).toContain("4 times");
     expect(text).toContain("At the poles");
+    // The words, never the letter.
+    expect(text).toContain("At the centre");
   });
 
   it("is silent when nothing repeats", () => {
