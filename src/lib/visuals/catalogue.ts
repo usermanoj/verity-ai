@@ -240,32 +240,86 @@ export function visualFor(heading: string, text: string): VisualKind | null {
 // electromagnets from five angles rendered the same coil widget five times,
 // which reads as automation rather than authorship. A concept earns its
 // interactive once, at the first section that matches it.
+/**
+ * How much a section ASKS THE STUDENT TO USE the concept, rather than state it.
+ *
+ * Matching used to give a concept's interactive to the first section that
+ * mentioned it, which on the school's motion deck put the gradient widget on
+ * "Gradient and speed" — one sentence saying the slope gives you speed — while
+ * three sections later "Worked example: gradient equals speed" asks a student to
+ * calculate one, using the very numbers the widget opens on. The interactive was
+ * three screens above the exercise it answers.
+ *
+ * So a section that sets work beats one that introduces a term. The signals are
+ * the vocabulary a deck actually uses for that — an instruction to do something,
+ * a task heading, or an equation worked through — and each is worth naming
+ * separately so a wrong placement can be argued about by pointing at a line.
+ *
+ * Deliberately blunt. This only chooses BETWEEN sections that already matched
+ * the same visual, so a false positive costs at most a placement one section
+ * away from where it would otherwise have been, and never an interactive on a
+ * section that does not match at all.
+ */
+export function applicationScore(heading: string, text: string): number {
+  const both = `${heading} ${text}`;
+  let score = 0;
+
+  // A deck's own words for "now you try": worked examples and check-for-
+  // understanding tasks are where a student is holding a pencil.
+  if (/worked example|check for understanding|\btask\b|your turn|now try/i.test(both)) score += 2;
+
+  // An instruction to do the thing, rather than a description of it.
+  if (/\b(calculate|sketch|plot|complete the|work out|find the|measure)\b/i.test(both)) score += 2;
+
+  // Arithmetic carried out on the page. Two numbers and an equals sign is a
+  // worked calculation; a lone figure in prose is not.
+  if (/=/.test(text) && (text.match(/\d/g) ?? []).length >= 3) score += 1;
+
+  return score;
+}
+
 export function assignVisuals(sections: { heading: string; text: string; hasMedia: boolean }[]): (VisualKind | null)[] {
   const used = new Set<VisualKind>();
 
-  // Two passes, so a concept's interactive is not spent on a section that
-  // already has the teacher's own diagram.
+  // One ranking, not two passes.
   //
-  // The first version skipped any section with media outright, which made the
-  // two mutually exclusive — a static picture OR something to try, never
-  // both. That was the wrong call: a diagram of field lines and a field you
-  // can turn in your hands do different jobs, and the deck's best-illustrated
-  // sections were exactly the ones being denied interaction. Now a section
-  // with media keeps its diagram and takes the interactive only if no
-  // media-less section elsewhere in the lesson wants it.
+  // Not having the teacher's own diagram used to be an absolute preference: a
+  // media-less section always took the interactive, however weak a home it was.
+  // The reasoning was sound as far as it went — a static picture and something
+  // you can turn in your hands do different jobs, so a section with neither
+  // should be served first. But it was doing more work than it was meant to.
+  //
+  // On the school's motion deck it put the gradient widget on "Gradient and
+  // speed", one sentence saying the slope gives you speed, while "Worked
+  // example: gradient equals speed" — which asks a student to calculate one,
+  // from the very numbers the widget opens on — was passed over for carrying a
+  // picture of the graph. That picture is the exercise. Being able to drag the
+  // points of the graph you have just been asked about is the best pairing in
+  // the deck, and the rule was reading it as the worst.
+  //
+  // So the diagram is a TIEBREAK now, worth less than a section that sets work.
+  // Where no section sets work — which is every section of the magnetism deck —
+  // every application score is zero and this behaves exactly as it did before.
   const kinds = sections.map((s) => visualFor(s.heading, s.text));
+  const rank = sections.map(
+    (s) => applicationScore(s.heading, s.text) * 2 + (s.hasMedia ? 0 : 1),
+  );
   const assigned: (VisualKind | null)[] = sections.map(() => null);
 
-  for (const preferMediaLess of [true, false]) {
-    sections.forEach((s, i) => {
-      if (assigned[i]) return;
-      if (preferMediaLess === s.hasMedia) return;
-      const kind = kinds[i];
-      if (!kind || used.has(kind)) return;
-      used.add(kind);
-      assigned[i] = kind;
-    });
+  // The best home for each concept, ties broken by reading order.
+  const best = new Map<VisualKind, number>();
+  sections.forEach((_, i) => {
+    const kind = kinds[i];
+    if (!kind || used.has(kind)) return;
+    const current = best.get(kind);
+    if (current === undefined || rank[i] > rank[current]) best.set(kind, i);
+  });
+
+  for (const [kind, i] of best) {
+    used.add(kind);
+    assigned[i] = kind;
   }
 
   return assigned;
 }
+
