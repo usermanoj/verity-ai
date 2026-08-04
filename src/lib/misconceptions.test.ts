@@ -188,3 +188,37 @@ describe("the letter and the words", () => {
     expect(out[0].answer).toBe("At the centre");
   });
 });
+
+describe("questions the teacher withdrew", () => {
+  it("is not a belief worth correcting", () => {
+    // The real case: eight of this school's attempts are on ten narrative
+    // questions since retired — "in which century did the Chinese write about
+    // magnetism". A child answered "First century" three times. Reporting that
+    // as a misconception would send a teacher to reteach a piece of history
+    // that is not on the syllabus.
+    const century = (m: number): WrongAttempt => ({
+      questionId: "retired-1",
+      prompt: "In which century did the Chinese write about magnetism?",
+      answer: "B",
+      chosenAnswer: "First century",
+      correctAnswer: "Fourth century BC",
+      retired: true,
+      at: new Date(Date.UTC(2026, 6, 29, 13, m)).toISOString(),
+    });
+    expect(findMisconceptions([century(0), century(5), century(10)])).toEqual([]);
+  });
+
+  it("still finds one on a question that stands", () => {
+    const out = findMisconceptions([
+      attempt({ retired: false, at: minutesLater(0) }),
+      attempt({ retired: false, at: minutesLater(5) }),
+    ]);
+    expect(out).toHaveLength(1);
+  });
+
+  it("treats an unflagged attempt as live", () => {
+    // Older callers do not send the flag, and silence must not mean retired.
+    const out = findMisconceptions([attempt({ at: minutesLater(0) }), attempt({ at: minutesLater(5) })]);
+    expect(out).toHaveLength(1);
+  });
+});

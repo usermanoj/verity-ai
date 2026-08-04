@@ -30,6 +30,15 @@ export type WrongAttempt = {
    */
   chosenAnswer?: string | null;
   correctAnswer: string | null;
+  /**
+   * The teacher withdrew this question after it was answered.
+   *
+   * The answer stays in the list — it is a record of what the child did — but
+   * it is not evidence about what they understand. A repeated answer to a
+   * question nobody should have asked is not a belief worth correcting, and
+   * reporting one would send a teacher to reteach something off-syllabus.
+   */
+  retired?: boolean;
   at: string;
 };
 
@@ -93,6 +102,7 @@ export function findMisconceptions(
 
   for (const w of wrong) {
     if (!w.questionId) continue;
+    if (w.retired) continue;
     // JSON.stringify rather than a separator character: the first attempt at
     // this line wrote a literal NUL where a space was meant, which is how a
     // source file becomes binary to git. A pair encodes with no separator to

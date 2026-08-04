@@ -25,6 +25,8 @@ export type WrongAnswer = {
   chosenAnswer: string | null;
   /** What the grader recorded as right, where the question kind has one. */
   correctAnswer: string | null;
+  /** Withdrawn by the teacher after it was answered. Still shown, not counted. */
+  retired?: boolean;
   at: string;
 };
 
@@ -317,6 +319,7 @@ function Stuck({ wrong }: { wrong: WrongAnswer[] }) {
       answer: w.answer,
       chosenAnswer: w.chosenAnswer ?? null,
       correctAnswer: w.correctAnswer ?? null,
+      retired: w.retired ?? false,
       at: w.at,
     })),
   );
