@@ -90,7 +90,20 @@ export function keepValidSuggestions(
     const visual = typeof item.visual === "string" ? item.visual : "";
     const reason = typeof item.reason === "string" ? item.reason.trim() : "";
 
-    const entry = catalogue.find((v) => v.id === visual);
+    // Tolerant of the id arriving inside its catalogue line. Narrowing the
+    // offered list to what is free made it one item long on a real deck, and
+    // the model answered with the whole entry — id, label and blurb — as
+    // though that were the name. The leading token names exactly one
+    // interactive and there is nothing to guess at.
+    //
+    // Deliberately narrow: that token must be an id EXACTLY, so a model that
+    // has invented something is still dropped rather than half-matched into a
+    // real visual.
+    const named = catalogue.some((v) => v.id === visual)
+      ? visual
+      : (/^\s*"?([a-z]+)"?\s*[—:-]/.exec(visual)?.[1] ?? visual);
+
+    const entry = catalogue.find((v) => v.id === named);
     if (!entry) continue;
 
     const section = sections.get(chunkId);
@@ -99,13 +112,15 @@ export function keepValidSuggestions(
     // Heading and text together, the same pair the matcher reads.
     if (!entry.requires.test(`${section.heading} ${section.text}`)) continue;
 
-    if (taken.has(visual)) continue;
+    if (taken.has(entry.id)) continue;
     if (suggested.has(chunkId)) continue;
     if (!reason) continue;
 
-    taken.add(visual);
+    taken.add(entry.id);
     suggested.add(chunkId);
-    out.push({ chunkId, visual, reason });
+    // The id, never the line it arrived in — everything downstream looks this
+    // up against the catalogue.
+    out.push({ chunkId, visual: entry.id, reason });
   }
 
   return out;
@@ -118,7 +133,15 @@ export function keepValidSuggestions(
  * click and nothing has to be translated in between.
  */
 export function catalogueForPrompt(visuals: { id: string; label: string; blurb: string }[]): string {
-  return visuals.map((v) => `  ${v.id} — ${v.label}: ${v.blurb}`).join("\n");
+  // The id quoted and first, then a plain instruction about which part to send
+  // back. Narrowing this list to what is free made it one item long on a real
+  // deck and the model returned the entire entry as the name; saying so costs
+  // three words and the filter no longer has to repair it.
+  return [
+    ...visuals.map((v) => `  "${v.id}" — ${v.label}: ${v.blurb}`),
+    "",
+    `Answer with the id only, exactly as quoted (for example "${visuals[0]?.id ?? "lever"}").`,
+  ].join("\n");
 }
 
 /**
