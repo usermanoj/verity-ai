@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { describeSpan, helpEffect, pacing, toSessions, type TimelineEvent } from "@/lib/timeline";
 import type { TopicScore, Week } from "@/lib/student-breakdown";
 import type { ReadingRow } from "@/lib/reading";
+import { describeMisconception, findMisconceptions } from "@/lib/misconceptions";
 import StrengthsPanel from "./StrengthsPanel";
 
 // One student, in detail — the level the product has never had.
@@ -15,9 +16,13 @@ import StrengthsPanel from "./StrengthsPanel";
 
 export type WrongAnswer = {
   id: string;
+  /** Which question, so a repeat can be told from two different mistakes. */
+  questionId: string | null;
   prompt: string | null;
   level: string | null;
   answer: string;
+  /** What the grader recorded as right, where the question kind has one. */
+  correctAnswer: string | null;
   at: string;
 };
 
@@ -107,6 +112,7 @@ export default function StudentDetail({
         {detail?.allowed && (
           <div className="space-y-6">
             <StrengthsPanel topics={detail.topics ?? []} weekly={detail.weekly ?? []} reading={detail.reading ?? []} />
+            <Stuck wrong={detail.wrong ?? []} />
             <HowTheyWorked events={detail.events ?? []} />
             <section>
               <h3 className="mb-2 text-sm font-medium uppercase tracking-widest text-[var(--muted)]">
@@ -287,5 +293,48 @@ function Stat({ label, value, note }: { label: string; value: string; note: stri
       <div className="mt-0.5 text-lg font-semibold tabular-nums">{value}</div>
       <div className="mt-0.5 text-[11px] leading-tight text-[var(--muted)]">{note}</div>
     </div>
+  );
+}
+
+/**
+ * The same wrong answer, given again.
+ *
+ * Placed above the list of wrong answers rather than inside it, because it is a
+ * different kind of fact. The list says how much a child got wrong; this says
+ * they got the same thing wrong twice, which is the difference between not
+ * having learned something and having learned it incorrectly.
+ *
+ * Silent when there is nothing repeated. A panel that said "no misconceptions
+ * found" every time would train a teacher to skip the whole section.
+ */
+function Stuck({ wrong }: { wrong: WrongAnswer[] }) {
+  const stuck = findMisconceptions(
+    wrong.map((w) => ({
+      questionId: w.questionId ?? null,
+      prompt: w.prompt,
+      answer: w.answer,
+      correctAnswer: w.correctAnswer ?? null,
+      at: w.at,
+    })),
+  );
+  if (stuck.length === 0) return null;
+
+  return (
+    <section>
+      <h3 className="mb-2 text-sm font-medium uppercase tracking-widest text-[var(--warn)]">
+        Same answer, more than once
+      </h3>
+      <div className="space-y-2">
+        {stuck.map((m) => (
+          <div
+            key={`${m.questionId}-${m.answer}`}
+            className="rounded-2xl border border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.07)] p-3"
+          >
+            {m.prompt && <p className="text-sm">{m.prompt}</p>}
+            <p className="mt-1 text-xs text-[var(--warn)]">{describeMisconception(m)}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
