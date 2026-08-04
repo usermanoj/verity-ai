@@ -25,7 +25,17 @@ const STEPS = 20;
 export default function RelationshipPlay({ text }: { text: string }) {
   const found = detectRelationship(text);
   const play = found ? toPlayable(found.parts) : null;
-  const [position, setPosition] = useState(STEPS / 2);
+
+  // Opens at the end the TEACHER wrote about, so the first thing on screen is
+  // their own sentence rather than a position nobody described.
+  //
+  // It started in the middle, which looked neutral and was not: the bar sat at
+  // half while the words underneath committed to one end, asserting a
+  // direction the slider was not at. Seen the first time this was opened in a
+  // browser, and invisible to every test — the reading and the bar were each
+  // correct for the value they were given.
+  const start = play && play.cause.direction === "up" ? STEPS : 0;
+  const [position, setPosition] = useState(start);
 
   if (!play) return null;
 
@@ -101,7 +111,7 @@ export default function RelationshipPlay({ text }: { text: string }) {
       </p>
 
       <button
-        onClick={() => setPosition(STEPS / 2)}
+        onClick={() => setPosition(start)}
         className={`mt-2 w-full rounded-xl border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--text)] ${PRESSABLE}`}
       >
         Reset

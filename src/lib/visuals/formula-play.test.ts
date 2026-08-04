@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compute, parseFormula, shortLabel, workingOut } from "./formula-play";
+import { compute, inSentence, parseFormula, shortLabel, workingOut } from "./formula-play";
 
 // The claim this file has to earn is that it carries no subject knowledge.
 // Every formula below comes from a different subject, and none of them is
@@ -148,5 +148,19 @@ describe("names a quantity, not the sentence that introduces it", () => {
 
   it("drops a full stop that ended the sentence, not the quantity", () => {
     expect(parseFormula("For any rectangle, Area = length x width.")?.operands).toEqual(["length", "width"]);
+  });
+});
+
+describe("inSentence", () => {
+  it("lowers a word", () => {
+    expect(inSentence("Moment")).toBe("moment");
+    expect(inSentence("Net moment")).toBe("net moment");
+  });
+
+  it("leaves a symbol alone", () => {
+    // "watch m follow" reads as a typo, because it is one. Seen on the real
+    // deck's "M = F x d" the first time this was rendered in a browser.
+    expect(inSentence("M")).toBe("M");
+    expect(inSentence("F")).toBe("F");
   });
 });

@@ -66,3 +66,19 @@ describe("RelationshipPlay", () => {
     expect(html).toContain("aria-label");
   });
 });
+
+describe("where it opens", () => {
+  it("shows the teacher's own sentence first, not a midpoint", () => {
+    // It opened in the middle, which looked neutral and was not: the bar sat
+    // at half while the words committed to one end. Caught by opening it in a
+    // browser; every test passed because each half was correct for the value
+    // it was handed.
+    expect(render("Closer the poles, greater is the force.")).toContain("Closer poles → greater force");
+  });
+
+  it("opens at the other end when that is the end they wrote about", () => {
+    expect(render("Greater the distance from the wire, weaker is the magnetic field.")).toContain(
+      "Greater distance from the wire → weaker magnetic field",
+    );
+  });
+});

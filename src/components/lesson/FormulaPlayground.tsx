@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { compute, parseFormula, shortLabel, workingOut } from "@/lib/visuals/formula-play";
+import { compute, inSentence, parseFormula, shortLabel, workingOut } from "@/lib/visuals/formula-play";
 import { PRESSABLE } from "@/lib/ui";
 
 // The teacher's own formula, with the numbers in the student's hands.
@@ -79,7 +79,7 @@ export default function FormulaPlayground({ text }: { text: string }) {
           {/* No units: the section names the quantities, and inventing units
               for them would be inventing content. The relationship is the
               thing being taught. */}
-          Change either value and watch {formula.result.toLowerCase()} follow.
+          Change either value and watch {inSentence(formula.result)} follow.
         </p>
       )}
 
