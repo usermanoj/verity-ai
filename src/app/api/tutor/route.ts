@@ -5,6 +5,7 @@ import { hasLangfuse } from "@/lib/observability";
 import { logEvent } from "@/lib/events";
 import {
   buildSystemPrompt,
+  corpusForTopic,
   fallbackReply,
   replyBudget,
   splitLegacyLevel,
@@ -16,6 +17,10 @@ import { getCurrentAppUser } from "@/lib/auth";
 import { hasSupabase } from "@/lib/supabase/config";
 import { canSee, visibleDocuments } from "@/lib/access";
 import { conversationFor, logTurn } from "@/lib/conversations";
+import { namedSections, resolveNamed, unknownSections } from "@/lib/tutor/citations";
+// Imported explicitly: without it `reportError` resolves to the DOM global
+// of the same name, which takes one argument and silently swallows the rest.
+import { reportError } from "@/lib/errors/report";
 import { claimAiCall } from "@/lib/ai-usage";
 
 export const runtime = "nodejs";
@@ -227,7 +232,48 @@ export async function POST(req: NextRequest) {
   });
   after(async () => {
     const text = await assistantTurn;
-    await logTurn(conversationId, "assistant", text, intent, contextChunkId ? [contextChunkId] : []);
+
+    // Rule 3 tells the model not to name a source. Three of this school's
+    // sixty-one replies did anyway, and all three happened to point at real
+    // sections — checked by hand, afterwards, by someone who went looking.
+    // Nothing checked the fourth, and a reply naming "Page/Section 40" of a
+    // thirty-five-section deck tells a child their teacher's slide says
+    // something it does not.
+    //
+    // Everything below is inside after(), so the student already has their
+    // answer before any of it runs. The scan itself is one pass over a string
+    // already in memory and finds nothing on the ~95% of replies that obey the
+    // prompt; only a reply that actually named a section reaches the corpus
+    // read, which is why the common case costs nothing at all.
+    const named = namedSections(text);
+    let cited = contextChunkId ? [contextChunkId] : [];
+
+    if (named.length > 0) {
+      try {
+        const chunks = await corpusForTopic(topic);
+        const unknown = unknownSections(named, chunks.map((c) => c.source));
+        if (unknown.length > 0) {
+          await reportError(
+            "tutor",
+            new Error(
+              `named a section that does not exist: ${unknown.map((u) => `${u.file} p${u.page}`).join(", ")}`,
+            ),
+            "the tutor cited a page the deck does not have",
+          );
+        }
+        // What the model CLAIMED it used. With the whole deck in every prompt,
+        // "which chunks were available" is a constant and says nothing; a
+        // section it named is a claim, and recording it turns the next audit
+        // into a query rather than a parse of every reply.
+        const resolved = resolveNamed(named, chunks);
+        if (resolved.length > 0) cited = [...new Set([...cited, ...resolved])];
+      } catch {
+        // A failed check must never cost the transcript. The turn below is the
+        // row a teacher reads.
+      }
+    }
+
+    await logTurn(conversationId, "assistant", text, intent, cited);
   });
 
   // Outside start(), so cancel() can resolve with whatever had arrived rather
