@@ -167,27 +167,88 @@ export async function buildSystemPrompt(
   studentReplied = false,
   chinese = false,
 ): Promise<string> {
+  // The whole prompt, as one string. What the model is actually sent is the
+  // two parts as two system blocks — see buildSystemParts — and this exists so
+  // that a test or a probe can read the entire thing without knowing that.
+  const parts = await buildSystemParts(topicId, level, intent, turn, studentReplied, chinese);
+  return `${parts.stable}\n\n${parts.variable}`;
+}
+
+/**
+ * The system prompt in two pieces: the part that never changes for a topic,
+ * and the part that changes with the student and the button they pressed.
+ *
+ * WHY IT IS SPLIT. The closed corpus is bought by putting the whole approved
+ * deck into every turn, and on the school's own deck that is 87% of the
+ * prompt. A prompt cache reuses a PREFIX, so anything that varies and sits
+ * above the corpus pushes the corpus out of the cache — and the level, the
+ * intent and the turn number all used to sit above it. Ninety distinct
+ * prompts came out of one lesson and each re-sent the entire deck at full
+ * price; the cache was reusing 6.6% of the prompt.
+ *
+ * With the deck in `stable` and one cache breakpoint after it, every one of
+ * those ninety shares a single cached copy. On a 120-section deck — two
+ * ordinary decks — that halves the cost of a lesson for a class of thirty.
+ *
+ * Putting the long material first and the instructions last is also the better
+ * shape for the model: what it is being asked to do now sits closest to the
+ * question. That is a claim about behaviour, not just cost, so it is checked
+ * by scripts/probe-tutor-rules.mts rather than assumed.
+ */
+export type SystemParts = { stable: string; variable: string };
+
+export async function buildSystemParts(
+  topicId: string,
+  level: EslLevel,
+  intent: Intent,
+  turn = 0,
+  studentReplied = false,
+  chinese = false,
+): Promise<SystemParts> {
   const chunks = await corpusForTopic(topicId);
   const meta = (await contentRepo.getTopic(topicId)) ?? (await contentRepo.getTopic("moments"))!;
-  const progressNote =
-    turn > 0
-      ? `\n6. The student is continuing the same "${intent}" thread (turn ${turn + 1}) — look at the conversation history and do NOT repeat a previous reply. Go deeper, use a different worked example, or ask a different guiding question than before.`
-      : "";
-  return `You are Verity AI, the learning guide for ${meta.grade} ${meta.subject}, topic "${meta.title}".
+  return systemParts(meta, chunks, level, intent, turn, studentReplied, chinese, progressNoteFor(intent, turn));
+}
+
+function progressNoteFor(intent: Intent, turn: number): string {
+  return turn > 0
+    ? `\n- The student is continuing the same "${intent}" thread (turn ${turn + 1}) — look at the conversation history and do NOT repeat a previous reply. Go deeper, use a different worked example, or ask a different guiding question than before.`
+    : "";
+}
+
+function systemParts(
+  meta: { grade: string; subject: string; title: string },
+  chunks: CorpusChunk[],
+  level: EslLevel,
+  intent: Intent,
+  turn: number,
+  studentReplied: boolean,
+  chinese: boolean,
+  progressNote: string,
+): SystemParts {
+  // Identical for every variant of this topic, and therefore cacheable. Note
+  // rule 1 says "above": the material now precedes the rules, and a rule that
+  // points the wrong way is worse than no rule.
+  const stable = `You are Verity AI, the learning guide for ${meta.grade} ${meta.subject}, topic "${meta.title}".
 You are a patient guide for English-as-a-Second-Language students at an international school (IG & IB curriculum).
 
+APPROVED MATERIAL:
+${corpusBlock(chunks)}
+
 ABSOLUTE RULES — follow every time:
-1. Answer ONLY using the APPROVED MATERIAL between <source> tags below. This is the school's own textbook/slides/worksheets.
+1. Answer ONLY using the APPROVED MATERIAL between <source> tags above. This is the school's own textbook/slides/worksheets.
 2. If the question cannot be answered from the approved material, say so briefly and steer the student back to the topic. Do NOT use outside/internet knowledge, and do NOT guess.
 3. Do NOT write a citation or "Based on:" line. Never name the source file, page or section number. The material is already in front of the student.
 4. NEVER complete a whole assignment or give the final numeric answer to a task the student must do. Guide, hint, and ask questions instead (academic integrity).
-5. Be encouraging and concise. ${LEVEL_GUIDE[level]}${chinese ? CHINESE_GUIDE : ""}${progressNote}
-6. NEVER use LaTeX or MathJax. No \\(, \\), $$, \\text{}, \\times, \\frac. Write maths as a student would on paper: "200 N × 1.5 m = F × 1.0 m", "Moment = force × distance". This chat renders plain text, so LaTeX reaches the student as raw backslashes — and for someone reading in a second language that is worse than no formula at all.
+5. Be encouraging and concise.
+6. NEVER use LaTeX or MathJax. No \\(, \\), $$, \\text{}, \\times, \\frac. Write maths as a student would on paper: "200 N × 1.5 m = F × 1.0 m", "Moment = force × distance". This chat renders plain text, so LaTeX reaches the student as raw backslashes — and for someone reading in a second language that is worse than no formula at all.`;
 
-TASK MODE: ${intentGuide(intent, turn, studentReplied)}${lengthRule(intent, turn)}
+  // Everything that depends on who is asking and what they pressed.
+  const variable = `WRITING FOR THIS STUDENT: ${LEVEL_GUIDE[level]}${chinese ? CHINESE_GUIDE : ""}${progressNote}
 
-APPROVED MATERIAL:
-${corpusBlock(chunks)}`;
+TASK MODE: ${intentGuide(intent, turn, studentReplied)}${lengthRule(intent, turn)}`;
+
+  return { stable, variable };
 }
 
 export type FallbackResult = { text: string; sourceId?: string };

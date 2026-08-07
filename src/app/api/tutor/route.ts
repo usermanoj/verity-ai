@@ -1,10 +1,10 @@
 import { NextRequest, after } from "next/server";
 import { streamText } from "ai";
-import { AI_PROVIDER, aiModel, gatewayFailover, GATEWAY_FALLBACK_MODELS, hasApiKey, cachedSystem } from "@/lib/ai";
+import { AI_PROVIDER, aiModel, gatewayFailover, GATEWAY_FALLBACK_MODELS, hasApiKey, cachedSystemParts } from "@/lib/ai";
 import { hasLangfuse } from "@/lib/observability";
 import { logEvent } from "@/lib/events";
 import {
-  buildSystemPrompt,
+  buildSystemParts,
   corpusForTopic,
   fallbackReply,
   replyBudget,
@@ -154,7 +154,10 @@ export async function POST(req: NextRequest) {
   // Whether the student typed anything, as opposed to tapping the button
   // again — the prompt treats those very differently (see intentGuide).
   const studentReplied = typeof question === "string" && question.trim().length > 0;
-  const system = await buildSystemPrompt(
+  // Two blocks, not one string: the deck and the invariant rules are
+  // identical for every variant of this topic and are cached across all of
+  // them, while the level, intent and turn ride behind the breakpoint.
+  const system = await buildSystemParts(
     topic,
     eslLevel,
     intent ?? "explain",
@@ -298,7 +301,7 @@ export async function POST(req: NextRequest) {
           // replyBudget) — a first answer that streams for twenty seconds is
           // a first answer nobody reads.
           maxOutputTokens: replyBudget(intent ?? "explain", turnNum).maxOutputTokens,
-          system: cachedSystem(system),
+          system: cachedSystemParts(system.stable, system.variable),
           messages: [...priorTurns, { role: "user", content: userText }],
           experimental_telemetry: { isEnabled: hasLangfuse(), functionId: "tutor" },
           providerOptions: gatewayFailover(GATEWAY_FALLBACK_MODELS),
