@@ -18,6 +18,17 @@
  * rows and a sequential scan at forty thousand. Row counts say how far away
  * that is.
  *
+ * IT CANNOT TELL YOU WHETHER AN INDEX EXISTS. Only `public` and
+ * `graphql_public` are exposed over PostgREST, so pg_indexes and
+ * information_schema are both out of reach.
+ *
+ * An earlier version printed an "index?" column anyway — a constant typed in
+ * by hand, sitting in a table of measurements as though it had been looked up.
+ * It still read NO after migration 0053 had created every one of them, and it
+ * was offered as the way to verify that migration. A hand-written belief
+ * formatted as a result is worse than no column at all. The SQL at the end of
+ * the output is the real check.
+ *
  * Read-only. Nothing is written.
  */
 import { createClient } from "@supabase/supabase-js";
@@ -30,39 +41,34 @@ for (const l of readFileSync(".env.local", "utf8").split("\n")) {
 }
 const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
-// Every table a dashboard touches, with the columns queries filter on and
-// whether an index covers them. The verdict is from the schema, not from a
-// plan — see the header.
+// Every table a dashboard touches, and the columns its queries filter on.
 //
-// "covered" means an index LEADS with the filtered column, which is the only
-// thing that helps. corpus_chunks and corpus_documents look bare by name and
-// are not: corpus_chunks_module_idx is (document_id, module), and
-// corpus_documents has two partial indexes leading with status and
-// uploaded_by. Read definitions, not names.
-const TABLES: { name: string; filters: string; covered: boolean }[] = [
-  { name: "events", filters: "user_id, type, created_at", covered: false },
-  { name: "practice_attempts", filters: "student_id, created_at", covered: true },
-  { name: "conversation_turns", filters: "conversation_id", covered: false },
-  { name: "conversations", filters: "student_id, class_id", covered: false },
-  { name: "generated_questions", filters: "chunk_id, status", covered: false },
-  { name: "corpus_chunks", filters: "document_id", covered: true },
-  { name: "corpus_document_sections", filters: "document_id, class_id", covered: false },
-  { name: "corpus_documents", filters: "status, uploaded_by", covered: true },
-  { name: "class_enrollments", filters: "class_id+student_id (PK)", covered: true },
-  { name: "users", filters: "school_id, role", covered: false },
-  { name: "classes", filters: "school_id, teacher_id", covered: false },
+// The filters come from reading each SQL function and each .eq()/.in() in the
+// application. Whether an index covers them is deliberately NOT stated here —
+// this script has no way to find out, and guessing in this column is the
+// mistake described in the header.
+const TABLES: { name: string; filters: string }[] = [
+  { name: "events", filters: "user_id, type, created_at" },
+  { name: "practice_attempts", filters: "student_id, created_at" },
+  { name: "conversation_turns", filters: "conversation_id" },
+  { name: "conversations", filters: "student_id, class_id" },
+  { name: "generated_questions", filters: "chunk_id, status" },
+  { name: "corpus_chunks", filters: "document_id" },
+  { name: "corpus_document_sections", filters: "document_id, class_id" },
+  { name: "corpus_documents", filters: "status, uploaded_by" },
+  { name: "class_enrollments", filters: "class_id+student_id (PK)" },
+  { name: "users", filters: "school_id, role" },
+  { name: "classes", filters: "school_id, teacher_id" },
 ];
 
-console.log("ROW COUNTS AND INDEX COVER\n");
-console.log("  rows  index?  table                      queries filter on");
+console.log("ROW COUNTS\n");
+console.log("  rows  table                      queries filter on");
 const counts = new Map<string, number>();
 for (const t of TABLES) {
   const { count, error } = await db.from(t.name).select("*", { count: "exact", head: true });
   const n = error ? -1 : (count ?? 0);
   counts.set(t.name, n);
-  console.log(
-    `${String(n === -1 ? "?" : n).padStart(6)}  ${(t.covered ? "yes" : "NO ").padEnd(6)}  ${t.name.padEnd(25)}  ${t.filters}`,
-  );
+  console.log(`${String(n === -1 ? "?" : n).padStart(6)}  ${t.name.padEnd(25)}  ${t.filters}`);
 }
 
 // The read side, timed against production. Two students means these are all
@@ -107,23 +113,24 @@ if (student && teacher) {
 }
 
 // The unindexed reads themselves, so the baseline is not only the RPCs.
-await time("events by user (no index)", () =>
+await time("events by user", () =>
   db.from("events").select("id").eq("user_id", student ?? "").limit(100),
 );
-await time("events by type (no index)", () =>
-  db.from("events").select("id").eq("type", "lesson_open").limit(100),
-);
-await time("generated_questions by status (no index)", () =>
+await time("events by type", () => db.from("events").select("id").eq("type", "lesson_open").limit(100));
+await time("generated_questions by status", () =>
   db.from("generated_questions").select("id").eq("status", "approved"),
 );
 
 console.log(`
 WHAT TO WATCH
-  A sequential scan costs nothing at these row counts and everything at a
-  hundred times them. The tables marked NO above are the ones where growth
-  turns a free scan into the slowest thing on a dashboard — 'events' first,
-  because it gains a row every time any student opens a lesson or scrolls a
-  section, and every dashboard reads it.
+  Everything above is within a few milliseconds of everything else, because at
+  these row counts the query is free and the number is the round trip from this
+  machine. Nothing here can be read as fast or slow.
+
+  What matters is growth against the filters listed at the top. A sequential
+  scan costs nothing over ninety rows and everything over ninety thousand —
+  'events' first, because it gains a row every time any student opens a lesson
+  or scrolls a section, and every dashboard reads it.
 `);
 
 const events = counts.get("events") ?? 0;
@@ -131,4 +138,27 @@ console.log(`  events today: ${events} rows. A class of 30 for one term, at a`);
 console.log(`  conservative 20 events per lesson and 3 lessons a week for 12 weeks,`);
 console.log(`  is about ${(30 * 20 * 3 * 12).toLocaleString()} rows — ${events > 0 ? Math.round((30 * 20 * 3 * 12) / events) : "many"}x what is there now.`);
 
-console.log("\nNothing was written.");
+console.log(`
+TO CHECK THE INDEXES THEMSELVES
+  This script cannot — pg_catalog is not exposed over PostgREST. Run this in
+  the Supabase SQL editor. Migration 0053 adds nine named indexes; all nine
+  should come back.
+
+    select tablename, indexname
+    from pg_indexes
+    where schemaname = 'public'
+      and indexname in (
+        'events_user_type_created_idx',
+        'generated_questions_chunk_status_idx',
+        'conversation_turns_conversation_idx',
+        'conversations_student_idx',
+        'corpus_document_sections_document_idx',
+        'corpus_document_sections_class_idx',
+        'users_school_role_idx',
+        'classes_school_idx',
+        'classes_teacher_idx'
+      )
+    order by tablename, indexname;
+`);
+
+console.log("Nothing was written.");
