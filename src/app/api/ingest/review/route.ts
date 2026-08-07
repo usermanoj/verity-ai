@@ -7,6 +7,15 @@ import { mapAiCalls } from "@/lib/ai";
 import { translateDocument } from "@/lib/translate/batch";
 import { suggestVisualsForDocument } from "@/lib/visuals/run";
 import { atLeast } from "@/lib/roles";
+import { reportError } from "@/lib/errors/report";
+
+// How many of a deck's sections get questions when it is approved.
+//
+// A ceiling, not a target: it is one model call per section, run two at a
+// time, inside an after() callback with its own time limit. Raising it makes
+// the timeout likelier, not the deck more complete — which is why the answer
+// to a long deck is to TELL the teacher rather than to try harder.
+const GENERATION_CAP = 40;
 
 export const runtime = "nodejs";
 
@@ -127,8 +136,28 @@ async function generateQuestionsForDocument(documentId: string, teacherId: strin
       // A cap keeps a very long document from firing a hundred model calls;
       // the per-chunk "Generate" button still covers the remainder.
       .eq("document_id", documentId)
-      .limit(40);
+      .limit(GENERATION_CAP);
     if (!chunks || chunks.length === 0) return;
+
+    // Say so when the cap bites. A sixty-section deck gets questions for forty
+    // sections and none for the other twenty, and until now the teacher was
+    // told nothing at all — the deck simply looked finished. The per-chunk
+    // Generate button covers the remainder, but only if somebody knows to go
+    // looking, and spotting twenty gaps down a sixty-section list is not a
+    // thing anyone does by eye.
+    const { count: totalChunks } = await admin
+      .from("corpus_chunks")
+      .select("*", { count: "exact", head: true })
+      .eq("document_id", documentId);
+    if ((totalChunks ?? 0) > chunks.length) {
+      await reportError(
+        "questions",
+        new Error(
+          `generated questions for ${chunks.length} of ${totalChunks} sections (cap ${GENERATION_CAP})`,
+        ),
+        "a deck was too long to finish — the rest need the per-section Generate button",
+      );
+    }
 
     // mapAiCalls, not Promise.all: this fanned out one call per chunk with no
     // ceiling, so approving a 30-section deck asked the Gateway for thirty
@@ -154,7 +183,12 @@ async function generateQuestionsForDocument(documentId: string, teacherId: strin
 
     const rows = generated.flat();
     if (rows.length > 0) await admin.from("generated_questions").insert(rows);
-  } catch {
-    // Deliberately silent: the material is already approved and usable.
+  } catch (error) {
+    // The material is already approved and usable, so this must not fail the
+    // request — but it must not vanish either. This runs inside after(), and
+    // forty chunks at a concurrency of two is twenty sequential rounds: slow
+    // completions can push it past the function's own time limit, and the only
+    // symptom is a deck with fewer questions than it should have.
+    await reportError("questions", error, "generating a deck's questions did not finish");
   }
 }

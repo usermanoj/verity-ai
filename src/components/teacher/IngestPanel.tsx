@@ -207,6 +207,35 @@ function formatDiagnostics(timings: ListTimings | undefined, roundTripMs: number
 // form included — waited on an auth lookup plus three queries pulling every
 // chunk's full text before any HTML was sent. The form needs none of that,
 // so loading it here lets the page paint immediately and the list fill in.
+/**
+ * How much of a deck actually got questions.
+ *
+ * Approving a deck generates questions for its first forty sections and stops.
+ * On the school's three decks that ceiling has never been reached, so nothing
+ * showed it; a sixty-slide deck gets questions for two-thirds of itself and
+ * looks finished. The remedy already exists — every section without questions
+ * offers a Generate button — but finding twenty gaps by scrolling a
+ * sixty-section list is not something anyone does.
+ *
+ * Silent when every section is covered, which is the normal case and should
+ * stay quiet.
+ */
+export function QuestionCoverage({ chunks }: { chunks: Doc["chunks"] }) {
+  const withQuestions = chunks.filter((c) => c.questions.length > 0).length;
+  if (withQuestions === chunks.length) return null;
+
+  const missing = chunks.length - withQuestions;
+  return (
+    <div className="mt-3 rounded-2xl border border-[var(--warn)]/40 bg-[var(--warn)]/10 p-3 text-xs text-[var(--text)]/90">
+      <span className="font-medium text-[var(--warn)]">
+        {withQuestions} of {chunks.length} sections have practice questions.
+      </span>{" "}
+      {missing} {missing === 1 ? "section has" : "sections have"} none — automatic generation stops
+      after the first 40. Each one below offers a “Generate practice questions” button.
+    </div>
+  );
+}
+
 export default function IngestPanel({ initialDocuments }: { initialDocuments: Doc[] }) {
   // Seeded from the server-rendered page, so the list is on screen with the
   // first paint — no mount fetch, no skeleton, no waterfall. refresh() still
@@ -1015,6 +1044,10 @@ export default function IngestPanel({ initialDocuments }: { initialDocuments: Do
 
             {open && chunksLoadingId === doc.id && doc.chunks.length === 0 && (
               <p className="mt-3 text-xs text-[var(--muted)]">Loading content…</p>
+            )}
+
+            {open && doc.chunks.length > 0 && doc.status === "approved" && (
+              <QuestionCoverage chunks={doc.chunks} />
             )}
 
             {open && doc.chunks.length > 0 && (
