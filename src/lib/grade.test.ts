@@ -437,3 +437,62 @@ describe("an article in a blank", () => {
     expect(gradeFill(q, "a").correct).toBe(true);
   });
 });
+
+describe("a unit the question never asked for", () => {
+  // Seventeen approved numeric questions carry a unit their prompt never
+  // mentions. The hand-authored bank, which does want units, says so.
+  const distance = { kind: "numeric", expected: 5, unit: "m" } as const;
+  const silent = "How far did the person walk in the first part of the journey?";
+
+  it("accepts the bare number", () => {
+    const r = gradeNumeric(distance, "5", silent);
+    expect(r.correct).toBe(true);
+    expect(r.score).toBe(1);
+  });
+
+  it("does not tick a unit the student never wrote", () => {
+    expect(gradeNumeric(distance, "5", silent).details.unitGraded).toBe(false);
+  });
+
+  it("still marks a unit the student DID write, and got wrong", () => {
+    // A number with the wrong unit on it is not a right answer that happens to
+    // be untidy — "5 cm" is a different distance.
+    const r = gradeNumeric(distance, "5 cm", silent);
+    expect(r.correct).toBe(false);
+    expect(r.details.unitGraded).toBe(true);
+  });
+
+  it("accepts a right unit volunteered anyway", () => {
+    expect(gradeNumeric(distance, "5 m", silent).correct).toBe(true);
+  });
+
+  it("is not fooled into reading prose as a unit", () => {
+    // "The answer is 5" claims no unit. Reading "answer" as one would mark a
+    // correct bare number wrong, which is the whole thing being fixed.
+    expect(gradeNumeric(distance, "The answer is 5", silent).correct).toBe(true);
+  });
+
+  it("still shows the unit in the right answer when the value is wrong", () => {
+    // Deliberately unlike direction: seeing "5 m" teaches the unit.
+    expect(gradeNumeric(distance, "9", silent).correctAnswer).toBe("5 m");
+  });
+});
+
+describe("a unit the question did ask for", () => {
+  const force = { kind: "numeric", expected: 300, unit: "N" } as const;
+
+  it("is required, exactly as before", () => {
+    // Verbatim from the demo bank.
+    const asked = "Ram (200 N) sits 1.5 m from a seesaw pivot. What weight must Shyam be at 1.0 m to balance it? (Give value + unit.)";
+    expect(gradeNumeric(force, "300", asked).correct).toBe(false);
+    expect(gradeNumeric(force, "300 N", asked).correct).toBe(true);
+  });
+
+  it("is required when the prompt says 'units' in the plural", () => {
+    expect(gradeNumeric(force, "300", "What is the weight? State the units.").correct).toBe(false);
+  });
+
+  it("keeps the old strict behaviour for a caller that passes no prompt", () => {
+    expect(gradeNumeric(force, "300").correct).toBe(false);
+  });
+});

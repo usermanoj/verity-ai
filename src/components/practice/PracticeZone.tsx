@@ -224,7 +224,7 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
             {(item.question.kind === "numeric") && (
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 <Chip ok={result.details.valueOk} label="value" />
-                {item.question.unit && <Chip ok={result.details.unitOk} label="unit" />}
+                {result.details.unitGraded && <Chip ok={result.details.unitOk} label="unit" />}
                 {result.details.directionGraded && <Chip ok={result.details.directionOk} label="direction" />}
               </div>
             )}

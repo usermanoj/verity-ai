@@ -76,6 +76,11 @@ export type GradeResult = {
   details: {
     valueOk?: boolean;
     unitOk?: boolean;
+    // Whether the unit counted towards the mark. False when the question never
+    // asked for one and the student did not offer one — there is nothing to
+    // tick or cross, and a green "unit" against an answer of "5" would be
+    // claiming the student got something right that they never wrote.
+    unitGraded?: boolean;
     directionOk?: boolean;
     // Whether direction counted towards the mark at all. A question carrying a
     // direction its prompt never asks about does not get a tick or a cross for
@@ -129,6 +134,36 @@ const ASKS_DIRECTION = /\bdirection\b|clockwise\s+or\s+anti-?clockwise/i;
 // Stripped before a unit is read, so "8 Nm clockwise" is still 8 Nm.
 const DIRECTION_WORDS = /(anti-?clockwise|counter-?clockwise|clockwise|ccw|cw)/g;
 
+// Does the QUESTION ask for a unit?
+//
+// The same measurement as ASKS_DIRECTION, and the same answer: not one of the
+// twenty approved numeric prompts contains the word, including the seventeen
+// that demand a unit, while the hand-authored bank says "(Value + unit.)" and
+// "Give value + unit" and means it.
+const ASKS_UNIT = /\bunits?\b/i;
+
+/**
+ * Did the student put a unit on their answer at all?
+ *
+ * Anything alphabetic left once the number, the direction words and the
+ * punctuation are gone. "5" claims nothing; "5 cm" claims centimetres and can
+ * therefore be wrong. Words that are plainly prose rather than a unit —
+ * "the answer is 5" — would read as a claim, so they are dropped first; that
+ * list is deliberately tiny, because guessing wrongly here marks a bare number
+ * wrong, which is the whole thing being fixed.
+ */
+const ANSWER_PROSE = /\b(the|answer|is|are|it|equals?|about|approx(imately)?|around|roughly|so|and|of)\b/g;
+
+function claimsUnit(answer: string): boolean {
+  const rest = answer
+    .toLowerCase()
+    .replace(DIRECTION_WORDS, " ")
+    .replace(ANSWER_PROSE, " ")
+    .replace(/-?\d+(\.\d+)?/g, " ")
+    .replace(/[^a-z]/g, "");
+  return rest.length > 0;
+}
+
 function detectUnit(input: string, unit: string): boolean {
   const u = unit.toLowerCase().trim();
   if (!u) return true;
@@ -172,7 +207,25 @@ export function gradeNumeric(q: NumericQuestion, answer: string, prompt?: string
   // unset, and the documented 1% applies.
   const tol = q.tolerance && q.tolerance > 0 ? q.tolerance : Math.max(Math.abs(q.expected) * 0.01, 1e-9);
   const valueOk = parsed !== null && Math.abs(parsed - q.expected) <= tol;
-  const unitOk = q.unit ? detectUnit(answer, q.unit) : true;
+
+  // A unit is only DEMANDED when the question asked for one — but a unit the
+  // student volunteers is always marked.
+  //
+  // Seventeen approved questions carry a unit their prompt never mentions.
+  // "How far did the person walk in the first part of the journey?" wants
+  // "5 m" and rejects "5", which is the same defect as the direction one: the
+  // software inventing a requirement the question did not state. The
+  // hand-authored bank, which does want units, says so — "(Value + unit.)",
+  // "Give value + unit" — and keeps its old behaviour exactly.
+  //
+  // Not graded and not-graded-at-all are different here, and that difference
+  // matters more than it did for direction. A bare "5" claims nothing and is
+  // the whole answer to a question that asked for a distance. "5 cm" claims
+  // centimetres and is wrong, whether or not the question asked — a number
+  // with the wrong unit on it is not a right answer that happens to be untidy.
+  const unitAsked = q.unit ? prompt === undefined || ASKS_UNIT.test(prompt) : false;
+  const unitOk = !q.unit || (!unitAsked && !claimsUnit(answer)) || detectUnit(answer, q.unit);
+  const gradeUnit = Boolean(q.unit) && (unitAsked || claimsUnit(answer));
 
   // A direction is only marked when the question asked for one.
   //
@@ -191,9 +244,9 @@ export function gradeNumeric(q: NumericQuestion, answer: string, prompt?: string
   // Partial credit: value is the main thing; unit + direction are worth 0.15 each.
   let score = 0;
   if (valueOk) score += 0.7;
-  if (unitOk) score += q.unit ? 0.15 : 0;
+  if (unitOk) score += gradeUnit ? 0.15 : 0;
   if (directionOk) score += gradeDirection ? 0.15 : 0;
-  if (!q.unit) score += 0.15;
+  if (!gradeUnit) score += 0.15;
   if (!gradeDirection) score += 0.15;
   score = Math.min(1, valueOk ? score : score * 0.0); // no value => 0 (avoid rewarding guesses)
 
@@ -216,10 +269,21 @@ export function gradeNumeric(q: NumericQuestion, answer: string, prompt?: string
     // The direction is left off when it was not graded, so a student is never
     // shown "8 Nm clockwise" as the answer to a question that asked only for
     // the turning effect.
+    // The unit stays in the right answer even when it was not required —
+    // deliberately unlike the direction. Showing "5 m" teaches the unit to a
+    // student who wrote a bare 5 and got the mark anyway, whereas naming a
+    // direction on a question that could not determine one just misleads.
     correctAnswer: correct
       ? undefined
       : [q.expected, q.unit, gradeDirection ? q.direction : null].filter(Boolean).join(" "),
-    details: { valueOk: !!valueOk, unitOk, directionOk, directionGraded: gradeDirection, parsedValue: parsed },
+    details: {
+      valueOk: !!valueOk,
+      unitOk,
+      unitGraded: gradeUnit,
+      directionOk,
+      directionGraded: gradeDirection,
+      parsedValue: parsed,
+    },
   };
 }
 
