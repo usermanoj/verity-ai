@@ -238,12 +238,28 @@ export function mapAiCalls<T, R>(items: T[], run: (item: T, index: number) => Pr
 // approved corpus is large and reused across many requests per topic). The
 // Gateway forwards providerOptions to whichever provider is active and
 // non-Anthropic providers simply ignore an option they don't recognize.
-export function cachedSystem(text: string) {
-  return {
-    role: "system" as const,
-    content: text,
-    providerOptions: {
-      anthropic: { cacheControl: { type: "ephemeral" as const } },
+/**
+ * Two system blocks with the cache breakpoint between them.
+ *
+ * A cache reuses a PREFIX. One breakpoint at the end of a single block caches
+ * that exact block and nothing else, so a prompt that differs anywhere — by
+ * the student's English level, by which button they pressed, by the turn
+ * number — is a complete miss and re-sends the deck at full price. One lesson
+ * produces ninety such variants.
+ *
+ * Splitting puts the breakpoint after the corpus: all ninety share the cached
+ * copy and pay only for the short tail that actually differs.
+ *
+ * `stable` must be byte-identical across those variants or this buys nothing —
+ * which is what src/lib/tutor-cache.test.ts exists to enforce.
+ */
+export function cachedSystemParts(stable: string, variable: string) {
+  return [
+    {
+      role: "system" as const,
+      content: stable,
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" as const } } },
     },
-  };
+    { role: "system" as const, content: variable },
+  ];
 }
