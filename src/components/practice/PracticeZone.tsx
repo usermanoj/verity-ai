@@ -71,7 +71,8 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
   }
 
   function check() {
-    const r = grade(item.question, input);
+    // The prompt goes with it so the grader can tell what the question asked.
+    const r = grade(item.question, input, item.prompt);
     setResult(r);
     setAttempts((a) => a + 1);
     if (r.correct) {
@@ -224,7 +225,7 @@ export default function PracticeZone({ bank }: { bank: PracticeItem[] }) {
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 <Chip ok={result.details.valueOk} label="value" />
                 {item.question.unit && <Chip ok={result.details.unitOk} label="unit" />}
-                {item.question.direction && <Chip ok={result.details.directionOk} label="direction" />}
+                {result.details.directionGraded && <Chip ok={result.details.directionOk} label="direction" />}
               </div>
             )}
             <div className="mt-2 text-[11px] text-[var(--muted)]">📖 {item.source}</div>

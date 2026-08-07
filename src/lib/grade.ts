@@ -77,6 +77,11 @@ export type GradeResult = {
     valueOk?: boolean;
     unitOk?: boolean;
     directionOk?: boolean;
+    // Whether direction counted towards the mark at all. A question carrying a
+    // direction its prompt never asks about does not get a tick or a cross for
+    // it — a green "direction ✓" on a question that never mentioned direction
+    // is as confusing as the red one it replaces.
+    directionGraded?: boolean;
     parsedValue?: number | null;
   };
 };
@@ -97,31 +102,99 @@ function detectDirection(input: string): "clockwise" | "anticlockwise" | null {
   return null;
 }
 
+// Does the QUESTION ask which way it turns?
+//
+// Six approved questions carry direction: "clockwise" while asking only "What
+// is the turning effect when the force is 4 N and the distance is 2 m?" — a
+// force and a distance, with no geometry that could fix a direction. A student
+// who answered "8 Nm", which is the whole of the right answer, was marked
+// wrong and shown a red "direction" chip for something the question never
+// mentioned.
+//
+// The test is the WORD "direction", which measurement says is exactly right
+// here. Across the school's twenty approved numeric questions not one prompt
+// contains it — including all six that demand one — while the hand-authored
+// bank asks "State value, unit and direction (clockwise)" and means it.
+//
+// Matching on a mention of "clockwise" instead would be wrong twice over: it
+// would miss "State value, unit and direction", and it would fire on "A
+// balanced body has a clockwise moment of 12 N m. What is the anticlockwise
+// moment about the pivot?", which names both directions while asking for
+// neither and would fail a student for omitting what the question told them.
+//
+// The alternation is kept for a question that offers the choice without ever
+// using the noun.
+const ASKS_DIRECTION = /\bdirection\b|clockwise\s+or\s+anti-?clockwise/i;
+
+// Stripped before a unit is read, so "8 Nm clockwise" is still 8 Nm.
+const DIRECTION_WORDS = /(anti-?clockwise|counter-?clockwise|clockwise|ccw|cw)/g;
+
 function detectUnit(input: string, unit: string): boolean {
-  // normalise: "Nm", "N m", "N.m", "newton metre(s)"
-  const s = input.toLowerCase().replace(/\s|\.|·/g, "");
-  const u = unit.toLowerCase().replace(/\s|\.|·/g, "");
-  if (s.includes(u)) return true;
-  if (u === "nm" && /newtonmet(er|re)s?/.test(s)) return true;
-  if (u === "n" && /newtons?/.test(s)) return true;
+  const u = unit.toLowerCase().trim();
+  if (!u) return true;
+
+  const s = input.toLowerCase().replace(/[.,()·]/g, " ").replace(DIRECTION_WORDS, " ");
+
+  // A unit has to be the WHOLE unit, not a piece of a bigger one.
+  //
+  // This was `s.includes(u)` on a space-stripped string, which made "50 cm"
+  // satisfy a question wanting metres, "50 mm" likewise, and "600 Nm" satisfy
+  // one wanting newtons. Marking a wrong unit right is the mirror image of the
+  // direction bug and quietly flatters a student's analytics.
+  //
+  // Whitespace inside the unit is optional in BOTH directions — "Nm", "N m"
+  // and "N.m" are one unit written three ways, and which of them the mark
+  // scheme happens to use must not decide whether a student is right. So the
+  // unit is compacted and its characters rejoined with optional space.
+  //
+  // The boundaries exclude letters and "/" so that a prefix ("c" in "cm") or a
+  // denominator ("/s" in "m/s") stops the match. Written without lookbehind:
+  // school iPads run older Safari.
+  const pattern = u
+    .replace(/\s+/g, "")
+    .split("")
+    .map((c) => c.replace(/[.*+?^${}()|[\]\\/]/, "\\$&"))
+    .join("\\s*");
+  if (new RegExp(`(^|[^a-z/])${pattern}($|[^a-z/])`).test(s)) return true;
+
+  // Written out in words, which is right and which an ESL student may prefer.
+  if (/^n\s*m$/.test(u)) return /newton\s*met(er|re)s?/.test(s);
+  if (u === "n") return /newtons?/.test(s);
   return false;
 }
 
-export function gradeNumeric(q: NumericQuestion, answer: string): GradeResult {
+export function gradeNumeric(q: NumericQuestion, answer: string, prompt?: string): GradeResult {
   const parsed = parseNumber(answer);
-  const tol = q.tolerance ?? Math.max(Math.abs(q.expected) * 0.01, 1e-9);
+  // A tolerance of 0 is the generator filling the field in, not a teacher
+  // asking for exact float equality — three approved questions carry it. Left
+  // as written it demands that a computed answer land on the same double, so
+  // an expected value of 0.30000000000000004 rejects "0.3". Non-positive means
+  // unset, and the documented 1% applies.
+  const tol = q.tolerance && q.tolerance > 0 ? q.tolerance : Math.max(Math.abs(q.expected) * 0.01, 1e-9);
   const valueOk = parsed !== null && Math.abs(parsed - q.expected) <= tol;
   const unitOk = q.unit ? detectUnit(answer, q.unit) : true;
-  const directionOk = q.direction ? detectDirection(answer) === q.direction : true;
+
+  // A direction is only marked when the question asked for one.
+  //
+  // Nothing may be required of a student that the question did not request. A
+  // mark wrongly withheld tells their teacher to reteach something they
+  // already knew, which is the harm this whole audit is about.
+  //
+  // A caller that supplies no prompt keeps the old strict behaviour: the hand
+  // authored demo banks do ask for a direction, and silently loosening the
+  // grade for a caller that has not opted in would be a second surprise of the
+  // same kind. The one real caller passes the prompt.
+  const gradeDirection = Boolean(q.direction) && (prompt === undefined || ASKS_DIRECTION.test(prompt));
+  const directionOk = gradeDirection ? detectDirection(answer) === q.direction : true;
 
   const correct = !!valueOk && unitOk && directionOk;
   // Partial credit: value is the main thing; unit + direction are worth 0.15 each.
   let score = 0;
   if (valueOk) score += 0.7;
   if (unitOk) score += q.unit ? 0.15 : 0;
-  if (directionOk) score += q.direction ? 0.15 : 0;
+  if (directionOk) score += gradeDirection ? 0.15 : 0;
   if (!q.unit) score += 0.15;
-  if (!q.direction) score += 0.15;
+  if (!gradeDirection) score += 0.15;
   score = Math.min(1, valueOk ? score : score * 0.0); // no value => 0 (avoid rewarding guesses)
 
   let feedback: string;
@@ -140,8 +213,13 @@ export function gradeNumeric(q: NumericQuestion, answer: string): GradeResult {
     correct,
     score,
     feedback,
-    correctAnswer: correct ? undefined : [q.expected, q.unit, q.direction].filter(Boolean).join(" "),
-    details: { valueOk: !!valueOk, unitOk, directionOk, parsedValue: parsed },
+    // The direction is left off when it was not graded, so a student is never
+    // shown "8 Nm clockwise" as the answer to a question that asked only for
+    // the turning effect.
+    correctAnswer: correct
+      ? undefined
+      : [q.expected, q.unit, gradeDirection ? q.direction : null].filter(Boolean).join(" "),
+    details: { valueOk: !!valueOk, unitOk, directionOk, directionGraded: gradeDirection, parsedValue: parsed },
   };
 }
 
@@ -219,6 +297,21 @@ export function gradeTrueFalse(q: TrueFalseQuestion, answer: string): GradeResul
   };
 }
 
+// "the speed" and "speed" are the same answer to a blank.
+//
+// "The slope of a distance-time graph gives you ____" accepts "speed", and a
+// student who writes "the speed" has written a better sentence and was marked
+// wrong for it. An article carries no physics, and this is a tool for students
+// writing in a second language — the population most likely to add one, or to
+// leave one out. Stripped from BOTH sides, so a mark scheme that says "a
+// plotting compass" also accepts "plotting compass".
+//
+// Never strips the whole answer away: a one-word answer of "a" stays "a".
+function dropArticle(s: string): string {
+  const without = s.replace(/^(a|an|the)\s+/, "");
+  return without.length > 0 ? without : s;
+}
+
 export function gradeFill(q: FillBlankQuestion, answer: string): GradeResult {
   const given = normaliseText(answer);
   // British and American spellings of the same word are both right: the
@@ -228,7 +321,10 @@ export function gradeFill(q: FillBlankQuestion, answer: string): GradeResult {
   // ends in "d", so anchoring it to a word boundary never fired.
   const correct = q.accept.some((a) => {
     const want = normaliseText(a);
-    return given === want || toZ(given) === toZ(want);
+    if (given === want || toZ(given) === toZ(want)) return true;
+    const g = dropArticle(given);
+    const w = dropArticle(want);
+    return g === w || toZ(g) === toZ(w);
   });
   return {
     correct,
@@ -305,10 +401,15 @@ export function gradeMatching(q: MatchingQuestion, answer: string): GradeResult 
   };
 }
 
-export function grade(q: Question, answer: string): GradeResult {
+/**
+ * @param prompt the question as the student read it. Optional, and only the
+ * numeric grader consults it — to avoid demanding a direction the question
+ * never asked for. Omitting it grades leniently rather than strictly.
+ */
+export function grade(q: Question, answer: string, prompt?: string): GradeResult {
   switch (q.kind) {
     case "numeric":
-      return gradeNumeric(q, answer);
+      return gradeNumeric(q, answer, prompt);
     case "mcq":
       return gradeMcq(q, answer);
     case "truefalse":
